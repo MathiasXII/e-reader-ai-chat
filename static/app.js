@@ -15,6 +15,7 @@
   var cancelBtn = document.getElementById("cancel-btn");
   var modelInput = document.getElementById("model-input");
   var modelDropdown = document.getElementById("model-dropdown");
+  var cfgDisplayNames = document.getElementById("cfg-display-names");
 
   var allModels = []; // full list of model ids from API
   var chatHistory = []; // {role, content}
@@ -309,8 +310,26 @@
   function appendMsg(role, text) {
     var div = document.createElement("div");
     div.className = role === "user" ? "msg msg-user" : "msg msg-assistant";
-    div.innerHTML = (role === "user" ? "You: " : "AI: ") + (role === "user" ? escapeHTML(text) : markdownToHTML(text));
+    var label = (role === "user" ? "You: " : "AI: ");
+    var content = role === "user" ? escapeHTML(text) : markdownToHTML(text);
+    div.innerHTML = (currentConfig.display_names !== false ? label : "") + content;
     messagesEl.appendChild(div);
+    scrollToBottom();
+  }
+
+  function renderAllMessages() {
+    // Re-render chat history with current display_names setting
+    messagesEl.innerHTML = '<div id="error"></div>';
+    errorEl = document.getElementById("error");
+    for (var i = 0; i < chatHistory.length; i++) {
+      var msg = chatHistory[i];
+      var div = document.createElement("div");
+      div.className = msg.role === "user" ? "msg msg-user" : "msg msg-assistant";
+      var label = (msg.role === "user" ? "You: " : "AI: ");
+      var content = msg.role === "user" ? escapeHTML(msg.content) : markdownToHTML(msg.content);
+      div.innerHTML = (currentConfig.display_names !== false ? label : "") + content;
+      messagesEl.appendChild(div);
+    }
     scrollToBottom();
   }
 
@@ -328,10 +347,12 @@
         cfgUrl.value = data.base_url || "";
         cfgKey.value = "";
         cfgKey.placeholder = data.has_api_key ? "(key saved — leave blank to keep)" : "sk-... or leave blank";
+        cfgDisplayNames.checked = data.display_names !== false;
         overlay.style.display = "block";
       },
       function () {
         cfgUrl.value = "";
+        cfgDisplayNames.checked = true;
         overlay.style.display = "block";
       }
     );
@@ -346,14 +367,17 @@
     var body = {
       base_url: cfgUrl.value.trim(),
       api_key: cfgKey.value,
+      display_names: cfgDisplayNames.checked,
     };
     if (!body.base_url) {
       showError("Base URL is required.");
       return;
     }
     ajax("POST", "/api/session/config", body,
-      function () {
+      function (data) {
+        currentConfig.display_names = data.display_names !== false;
         closeSettings();
+        renderAllMessages();
         refreshModels();
       },
       function (msg) {
@@ -488,6 +512,9 @@
       currentConfig = data;
       if (data.model) {
         modelInput.value = data.model;
+      }
+      if (data.display_names === false) {
+        currentConfig.display_names = false;
       }
       if (data.base_url) {
         refreshModels();

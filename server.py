@@ -67,6 +67,7 @@ async def get_config(request: Request):
         "base_url": sess.get("base_url", ""),
         "model": sess.get("model", ""),
         "has_api_key": bool(sess.get("api_key")),
+        "display_names": sess.get("display_names", True),
     })
     response.set_cookie("sid", sid, httponly=True, max_age=86400 * 30)
     return response
@@ -78,6 +79,7 @@ async def set_config(request: Request):
     base_url = (body.get("base_url") or "").rstrip("/")
     model = (body.get("model") or "").strip()
     api_key = (body.get("api_key") or "").strip()
+    display_names = body.get("display_names")
 
     sid, sess = _get_session(request)
 
@@ -96,12 +98,16 @@ async def set_config(request: Request):
         sess["api_key"] = api_key
     # empty string = keep existing key (field is always blank on open for security)
 
+    if display_names is not None:
+        sess["display_names"] = bool(display_names)
+
     _persist_sessions()
 
     response = JSONResponse({
         "base_url": sess.get("base_url", ""),
         "model": sess.get("model", ""),
         "has_api_key": bool(sess.get("api_key")),
+        "display_names": sess.get("display_names", True),
     })
     response.set_cookie("sid", sid, httponly=True, max_age=86400 * 30)
     return response
