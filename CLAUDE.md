@@ -48,3 +48,10 @@ python -m uvicorn server:app --host 0.0.0.0 --port 8000
 - **No JS frameworks**: The frontend must stay compatible with the Kindle Scribe's limited browser. No React/Vue/TypeScript bundlers. Use plain JS compatible with older engines.
 - **Chat is non-streaming**: Both the gateway and frontend currently use `stream: false`. The entire response is returned at once. Streaming (SSE) could be added later as an enhancement.
 - **No localStorage**: Session config lives server-side in cookies (`sid`). The frontend does not use localStorage or sessionStorage.
+
+## Unsupported CSS (Kindle Scribe browser)
+
+The Kindle Scribe runs an older Chromium engine. Avoid CSS features from these specifications:
+
+- **CSS Box Alignment Module Level 3** — `gap` on flex containers does not work. Use `margin` on flex children instead.
+- **Unknown baseline** — When in doubt, stick to CSS features supported in Chrome ≤70. If a property is only in a Working Draft or requires Chrome 84+, assume the Kindle does not support it.
