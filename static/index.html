@@ -3,20 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kindle LLM</title>
+<title>E-Reader AI Chat</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;font-family:Georgia,serif;background:#fff;color:#000;font-size:18px}
 #app{display:flex;flex-direction:column;height:100%}
-#header{padding:8px 12px;border-bottom:2px solid #000}
-#header h1{font-size:20px;display:inline}
-#model-wrap{position:relative;display:inline-block;vertical-align:middle}
-#model-input{font-size:16px;padding:6px 8px;border:2px solid #000;font-family:inherit;cursor:pointer;background:#fff;width:200px}
+#header{display:flex;align-items:center;padding:8px 12px;border-bottom:2px solid #000}
+#header h1{font-size:20px;white-space:nowrap;flex-shrink:0;margin-right:8px}
+#model-wrap{position:relative;flex:1;min-width:0;margin-right:8px}
+#model-input{font-size:16px;padding:6px 8px;border:2px solid #000;font-family:inherit;cursor:pointer;background:#fff;width:100%}
 #model-dropdown{display:none;position:absolute;top:100%;left:0;width:300px;max-height:200px;overflow-y:auto;background:#fff;border:2px solid #000;z-index:20}
 .model-item{padding:10px 8px;cursor:pointer;font-size:16px;border-bottom:1px solid #ddd}
 .model-item:last-child{border-bottom:none}
 .model-item:active{background:#000;color:#fff}
-#settings-btn{font-size:18px;padding:6px 14px;background:#000;color:#fff;border:none;cursor:pointer;border-radius:4px;vertical-align:middle;float:right}
+#settings-btn{font-size:18px;padding:6px 14px;background:#000;color:#fff;border:none;cursor:pointer;border-radius:4px;flex-shrink:0}
 #messages{flex:1;overflow-y:auto;padding:10px 12px}
 .msg{margin-bottom:14px;line-height:1.5;word-wrap:break-word}
 .msg-user{font-weight:bold}
@@ -24,7 +24,7 @@ html,body{height:100%;font-family:Georgia,serif;background:#fff;color:#000;font-
 #error{color:red;padding:10px 12px;display:none;font-size:16px}
 #input-bar{border-top:2px solid #000;padding:8px;display:flex;gap:8px}
 #msg-input{flex:1;font-size:16px;padding:8px;border:2px solid #000;font-family:inherit;resize:none;min-height:48px;max-height:120px}
-#send-btn{font-size:16px;padding:8px 16px;background:#000;color:#fff;border:none;cursor:pointer;border-radius:4px;min-width:70px}
+#send-btn{font-size:16px;padding:8px 16px;background:#000;color:#fff;border:none;cursor:pointer;border-radius:4px;min-width:70px;margin-left:8px;}
 #send-btn:disabled{opacity:.5;cursor:default}
 
 /* Settings overlay */
@@ -43,7 +43,7 @@ html,body{height:100%;font-family:Georgia,serif;background:#fff;color:#000;font-
 <body>
 <div id="app">
   <div id="header">
-    <h1>Kindle LLM</h1>
+    <h1>E-Reader AI Chat</h1>
     <span id="model-wrap"><input id="model-input" type="text" placeholder="Select model..." autocomplete="off"><div id="model-dropdown"></div></span>
     <button id="settings-btn">Settings</button>
   </div>
@@ -54,7 +54,6 @@ html,body{height:100%;font-family:Georgia,serif;background:#fff;color:#000;font-
     <button id="send-btn">Send</button>
   </div>
 </div>
-
 <div id="settings-overlay">
   <div id="settings-panel">
     <h2>Session Settings</h2>
