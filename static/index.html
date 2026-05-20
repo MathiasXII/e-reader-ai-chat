@@ -2,79 +2,255 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Added maximum-scale=1.0 to prevent accidental zooming on touch screens -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>E-Reader AI Chat</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;font-family:Georgia,serif;background:#fff;color:#000;font-size:18px}
-#app{display:flex;flex-direction:column;height:100%}
-#header{display:flex;align-items:center;padding:8px 12px;border-bottom:2px solid #000}
-#header h1{font-size:20px;white-space:nowrap;flex-shrink:0;margin-right:8px}
-#model-wrap{position:relative;flex:1;min-width:0;margin-right:8px}
-#model-input{font-size:16px;padding:6px 8px;border:2px solid #000;font-family:inherit;cursor:pointer;background:#fff;width:100%}
-#model-dropdown{display:none;position:absolute;top:100%;left:0;width:300px;max-height:200px;overflow-y:auto;background:#fff;border:2px solid #000;z-index:20}
-.model-item{padding:10px 8px;cursor:pointer;font-size:16px;border-bottom:1px solid #ddd}
-.model-item:last-child{border-bottom:none}
-.model-item:active{background:#000;color:#fff}
-#settings-btn{font-size:18px;padding:6px 14px;background:#000;color:#fff;border:none;cursor:pointer;border-radius:4px;flex-shrink:0}
-#messages{flex:1;overflow-y:auto;padding:10px 12px}
-.msg{margin-bottom:14px;line-height:1.5;word-wrap:break-word}
-.msg-user{font-weight:bold}
-.msg-assistant{white-space:normal;line-height:1.6}
-.msg-assistant p{margin:0 0 10px}
-.msg-assistant p:last-child{margin-bottom:0}
-.msg-assistant h1,.msg-assistant h2,.msg-assistant h3,.msg-assistant h4,.msg-assistant h5,.msg-assistant h6{margin:14px 0 6px;line-height:1.3}
-.msg-assistant h1{font-size:1.4em}
-.msg-assistant h2{font-size:1.25em}
-.msg-assistant h3{font-size:1.1em}
-.msg-assistant h4{font-size:1em}
-.msg-assistant strong{font-weight:bold}
-.msg-assistant em{font-style:italic}
-.msg-assistant code.md-inline-code{font-family:monospace;background:#eee;padding:1px 4px;border-radius:3px;font-size:0.9em}
-.msg-assistant pre.md-code-block{background:#f5f5f5;border:1px solid #ccc;padding:10px;overflow-x:auto;margin:10px 0}
-.msg-assistant pre.md-code-block code{font-family:monospace;font-size:0.9em;white-space:pre}
-.msg-assistant ul,.msg-assistant ol{margin:8px 0;padding-left:24px}
-.msg-assistant li{margin:4px 0}
-.msg-assistant blockquote{border-left:3px solid #000;margin:10px 0;padding:4px 12px;color:#333}
-.msg-assistant a{color:#000;text-decoration:underline}
-.msg-assistant hr{border:none;border-top:1px solid #000;margin:14px 0}
-.msg-assistant .md-math{font-family:Georgia,"Times New Roman",serif}
-.msg-assistant .md-math-display{display:block;text-align:center;margin:12px 0;padding:8px 0}
-.msg-assistant .md-math-inline{display:inline}
-.md-frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;font-size:.85em;line-height:1.2;margin:0 2px}
-.md-frac-bar{display:block;width:100%;min-width:8px;height:1px;background:#000;margin:1px 0}
-#error{color:red;padding:10px 12px;display:none;font-size:16px}
-#input-bar{border-top:2px solid #000;padding:8px;display:flex;gap:8px}
-#msg-input{flex:1;font-size:16px;padding:8px;border:2px solid #000;font-family:inherit;resize:none;min-height:48px;max-height:120px}
-#send-btn{font-size:16px;padding:8px 16px;background:#000;color:#fff;border:none;cursor:pointer;border-radius:4px;min-width:70px;margin-left:8px;}
-#send-btn:disabled{opacity:.5;cursor:default}
+/* 1. Base Reset with legacy vendor prefixes */
+* { 
+  margin: 0; 
+  padding: 0; 
+  -webkit-box-sizing: border-box; 
+  -moz-box-sizing: border-box; 
+  box-sizing: border-box; 
+}
+html, body { 
+  height: 100%; 
+  font-family: Georgia, serif; 
+  background: #fff; 
+  color: #000; 
+  font-size: 18px; 
+  /* Prevent whole page from bouncing, we only scroll the messages area */
+  overflow: hidden; 
+}
 
-/* Settings overlay */
-#settings-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.3);z-index:10}
-#settings-panel{background:#fff;margin:30px auto;padding:20px;border:2px solid #000;max-width:500px;width:90%}
-#settings-panel h2{margin-bottom:14px;font-size:20px}
-#settings-panel label{display:block;margin-bottom:4px;font-weight:bold;font-size:16px}
-#settings-panel input{width:100%;font-size:16px;padding:8px;border:2px solid #000;margin-bottom:14px}
-#settings-panel .btn-row{display:flex;gap:10px;margin-top:10px}
-#settings-panel button{font-size:16px;padding:8px 16px;border:2px solid #000;cursor:pointer;border-radius:4px}
-#save-btn{background:#000;color:#fff}
-#cancel-btn{background:#fff;color:#000}
+/* 2. Absolute Layout Constraints */
+#app { 
+  position: absolute; 
+  top: 0; 
+  bottom: 0; 
+  left: 0; 
+  right: 0; 
+}
+
+/* --- HEADER --- */
+#header { 
+  position: absolute; 
+  top: 0; 
+  left: 0; 
+  right: 0; 
+  height: 55px; 
+  padding: 0 10px; 
+  border-bottom: 2px solid #000; 
+  background: #fff;
+  z-index: 10;
+}
+/* Floats must come first in DOM. Float left, Float right, then middle space. */
+#header h1 { 
+  float: left; 
+  font-size: 20px; 
+  line-height: 55px; /* Vertically centers the text to the 55px header */
+  margin-right: 10px; 
+  white-space: nowrap; 
+}
+#settings-btn { 
+  float: right; 
+  height: 34px;       /* Fixed height for exact alignment */
+  margin-top: 10px;   /* Pushes it down from the top exactly 10px */
+  margin-left: 15px;  /* Pushes the model selector away so they don't touch */
+  font-size: 16px; 
+  padding: 0 12px; 
+  background: #000; 
+  color: #fff; 
+  border: none; 
+  cursor: pointer;
+  line-height: 34px;  /* Centers the text vertically inside the button */
+}
+#model-wrap { 
+  display: block;
+  overflow: hidden; 
+  position: relative; 
+  padding-top: 10px;  /* Matches the button's margin-top exactly */
+}
+#model-input { 
+  width: 100%; 
+  height: 34px;       /* Matches the button's height exactly */
+  font-size: 16px; 
+  padding: 4px 8px;   /* Adjusted padding to fit the fixed height */
+  border: 2px solid #000; 
+  font-family: inherit; 
+  background: #fff; 
+}
+#model-dropdown { 
+  display: none; 
+  position: absolute; 
+  top: 44px; /* Adjusted to sit right beneath the new input height */
+  left: 0; 
+  width: 100%; 
+  max-height: 200px; 
+  overflow-y: scroll; 
+  -webkit-overflow-scrolling: touch;
+  background: #fff; 
+  border: 2px solid #000; 
+  z-index: 20; 
+}
+
+/* --- MESSAGES AREA --- */
+#error { 
+  color: red; 
+  padding: 10px 12px; 
+  display: none; 
+  font-size: 16px; 
+  position: absolute;
+  top: 55px;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  background: #fff;
+}
+#messages { 
+  position: absolute; 
+  top: 57px; /* 55px header + 2px border */
+  bottom: 72px; /* 70px input bar + 2px border */
+  left: 0; 
+  right: 0; 
+  overflow-y: scroll; /* Force scrolling for old webkit */
+  -webkit-overflow-scrolling: touch; 
+  padding: 10px 12px; 
+  background: #fff;
+}
+.msg { margin-bottom: 14px; line-height: 1.5; word-wrap: break-word; }
+.msg-user { font-weight: bold; }
+.msg-assistant { white-space: normal; line-height: 1.6; }
+.msg-assistant p { margin: 0 0 10px; }
+.msg-assistant h1, .msg-assistant h2, .msg-assistant h3 { margin: 14px 0 6px; }
+.msg-assistant code.md-inline-code { font-family: monospace; background: #eee; padding: 1px 4px; font-size: 0.9em; }
+.msg-assistant pre.md-code-block { background: #f5f5f5; border: 1px solid #ccc; padding: 10px; overflow-x: scroll; margin: 10px 0; }
+.msg-assistant pre.md-code-block code { font-family: monospace; font-size: 0.9em; white-space: pre; }
+.msg-assistant ul, .msg-assistant ol { margin: 8px 0; padding-left: 24px; }
+.msg-assistant li { margin: 4px 0; }
+.msg-assistant blockquote { border-left: 3px solid #000; margin: 10px 0; padding: 4px 12px; color: #333; }
+
+/* Math layout fixed for pre-flexbox */
+.msg-assistant .md-math { font-family: Georgia, "Times New Roman", serif; }
+.msg-assistant .md-math-display { display: block; text-align: center; margin: 12px 0; padding: 8px 0; }
+.msg-assistant .md-math-inline { display: inline; }
+.md-frac { display: inline-block; vertical-align: middle; text-align: center; font-size: .85em; margin: 0 2px; }
+.md-frac-bar { display: block; width: 100%; border-top: 1px solid #000; margin: 1px 0; height: 0; }
+
+/* --- INPUT BAR --- */
+#input-bar { 
+  position: absolute; 
+  bottom: 0; 
+  left: 0; 
+  right: 0; 
+  height: 70px; 
+  border-top: 2px solid #000; 
+  padding: 10px; 
+  background: #fff;
+  z-index: 10;
+}
+#send-btn { 
+  float: right; 
+  width: 80px; 
+  height: 48px; 
+  font-size: 16px; 
+  background: #000; 
+  color: #fff; 
+  border: none; 
+  cursor: pointer; 
+  margin-left: 10px; 
+}
+#msg-input-wrap {
+  /* Fills space between left edge and floated button */
+  display: block;
+  overflow: hidden; 
+  height: 48px;
+}
+#msg-input { 
+  width: 100%; 
+  height: 100%; 
+  font-size: 16px; 
+  padding: 8px; 
+  border: 2px solid #000; 
+  font-family: inherit; 
+  resize: none; 
+}
+
+/* --- SETTINGS OVERLAY --- */
+#settings-overlay { 
+  display: none; 
+  position: absolute; 
+  top: 0; 
+  bottom: 0; 
+  left: 0; 
+  right: 0; 
+  /* Fallback solid color for extreme legacy, rgba for decent legacy */
+  background: #fff; 
+  background: rgba(0,0,0,.6); 
+  z-index: 50; 
+}
+#settings-panel { 
+  background: #fff; 
+  margin: 40px auto 0 auto; 
+  padding: 20px; 
+  border: 2px solid #000; 
+  max-width: 500px; 
+  width: 90%; 
+}
+#settings-panel h2 { margin-bottom: 14px; font-size: 20px; }
+#settings-panel label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 16px; }
+#settings-panel input { width: 100%; font-size: 16px; padding: 8px; border: 2px solid #000; margin-bottom: 14px; }
+.btn-row { 
+  margin-top: 10px; 
+  display: block; 
+  overflow: hidden; /* clear floats */
+}
+#save-btn { 
+  float: left; 
+  font-size: 16px; 
+  padding: 8px 16px; 
+  background: #000; 
+  color: #fff; 
+  border: none; 
+  cursor: pointer; 
+}
+#cancel-btn { 
+  float: right; 
+  font-size: 16px; 
+  padding: 8px 16px; 
+  background: #fff; 
+  color: #000; 
+  border: 2px solid #000; 
+  cursor: pointer; 
+}
 </style>
 </head>
 <body>
 <div id="app">
   <div id="header">
-    <h1>E-Reader AI Chat</h1>
-    <span id="model-wrap"><input id="model-input" type="text" placeholder="Select model..." autocomplete="off"><div id="model-dropdown"></div></span>
+    <h1>E-Reader AI</h1>
+    <!-- Floated elements must be listed first in HTML -->
     <button id="settings-btn">Settings</button>
+    <div id="model-wrap">
+      <input id="model-input" type="text" placeholder="Select model..." autocomplete="off">
+      <div id="model-dropdown"></div>
+    </div>
   </div>
+  
   <div id="error"></div>
+  
   <div id="messages"></div>
+  
   <div id="input-bar">
-    <textarea id="msg-input" placeholder="Type a message..."></textarea>
+    <!-- Floated send button listed first -->
     <button id="send-btn">Send</button>
+    <div id="msg-input-wrap">
+      <textarea id="msg-input" placeholder="Type a message..."></textarea>
+    </div>
   </div>
 </div>
+
 <div id="settings-overlay">
   <div id="settings-panel">
     <h2>Session Settings</h2>
