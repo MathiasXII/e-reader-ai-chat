@@ -10,7 +10,12 @@ html,body{height:100%;font-family:Georgia,serif;background:#fff;color:#000;font-
 #app{display:flex;flex-direction:column;height:100%}
 #header{padding:8px 12px;border-bottom:2px solid #000}
 #header h1{font-size:20px;display:inline}
-#model-select{font-size:16px;padding:6px 8px;border:2px solid #000;font-family:inherit;vertical-align:middle;cursor:pointer;background:#fff}
+#model-wrap{position:relative;display:inline-block;vertical-align:middle}
+#model-input{font-size:16px;padding:6px 8px;border:2px solid #000;font-family:inherit;cursor:pointer;background:#fff;width:200px}
+#model-dropdown{display:none;position:absolute;top:100%;left:0;width:300px;max-height:200px;overflow-y:auto;background:#fff;border:2px solid #000;z-index:20}
+.model-item{padding:10px 8px;cursor:pointer;font-size:16px;border-bottom:1px solid #ddd}
+.model-item:last-child{border-bottom:none}
+.model-item:active{background:#000;color:#fff}
 #settings-btn{font-size:18px;padding:6px 14px;background:#000;color:#fff;border:none;cursor:pointer;border-radius:4px;vertical-align:middle;float:right}
 #messages{flex:1;overflow-y:auto;padding:10px 12px}
 .msg{margin-bottom:14px;line-height:1.5;word-wrap:break-word}
@@ -39,7 +44,7 @@ html,body{height:100%;font-family:Georgia,serif;background:#fff;color:#000;font-
 <div id="app">
   <div id="header">
     <h1>Kindle LLM</h1>
-    <select id="model-select"><option value="">No model</option></select>
+    <span id="model-wrap"><input id="model-input" type="text" placeholder="Select model..." autocomplete="off"><div id="model-dropdown"></div></span>
     <button id="settings-btn">Settings</button>
   </div>
   <div id="error"></div>

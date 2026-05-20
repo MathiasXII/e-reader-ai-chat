@@ -15,8 +15,10 @@
   var saveBtn = document.getElementById("save-btn");
   var cancelBtn = document.getElementById("cancel-btn");
   var fetchModelsBtn = document.getElementById("fetch-models-btn");
-  var modelSelect = document.getElementById("model-select");
+  var modelInput = document.getElementById("model-input");
+  var modelDropdown = document.getElementById("model-dropdown");
 
+  var allModels = []; // full list of model ids from API
   var chatHistory = []; // {role, content}
   var currentConfig = {}; // cached session config
 
@@ -108,39 +110,34 @@
       });
   }
 
-  function refreshModels() {
-    fetch("/api/session/models", { method: "GET" })
-      .then(function (r) {
-        if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || "Fetch failed"); });
-        return r.json();
-      })
-      .then(function (data) {
-        var models = (data.data || []).map(function (m) { return m.id; });
-        var current = currentConfig.model || "";
-        modelSelect.innerHTML = "";
-        if (models.length === 0) {
-          var opt = document.createElement("option");
-          opt.value = "";
-          opt.textContent = "No models";
-          modelSelect.appendChild(opt);
-          return;
-        }
-        models.forEach(function (id) {
-          var opt = document.createElement("option");
-          opt.value = id;
-          opt.textContent = id;
-          if (id === current) opt.selected = true;
-          modelSelect.appendChild(opt);
-        });
-      })
-      .catch(function () {
-        // silently ignore — base_url may not be configured yet
-      });
+  function renderModels(filter) {
+    var items = allModels;
+    if (filter) {
+      var lf = filter.toLowerCase();
+      items = allModels.filter(function (id) { return id.toLowerCase().indexOf(lf) !== -1; });
+    }
+    modelDropdown.innerHTML = "";
+    if (items.length === 0) {
+      var div = document.createElement("div");
+      div.className = "model-item";
+      div.textContent = filter ? "No match" : "No models";
+      modelDropdown.appendChild(div);
+      return;
+    }
+    items.forEach(function (id) {
+      var div = document.createElement("div");
+      div.className = "model-item";
+      div.textContent = id;
+      div.onclick = function () {
+        modelInput.value = id;
+        modelDropdown.style.display = "none";
+        saveModel(id);
+      };
+      modelDropdown.appendChild(div);
+    });
   }
 
-  function onModelChange() {
-    var model = modelSelect.value;
-    if (!model) return;
+  function saveModel(model) {
     currentConfig.model = model;
     fetch("/api/session/config", {
       method: "POST",
@@ -159,11 +156,49 @@
       });
   }
 
+  function refreshModels() {
+    fetch("/api/session/models", { method: "GET" })
+      .then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || "Fetch failed"); });
+        return r.json();
+      })
+      .then(function (data) {
+        allModels = (data.data || []).map(function (m) { return m.id; });
+        renderModels(modelInput.value);
+      })
+      .catch(function () {
+        // silently ignore — base_url may not be configured yet
+      });
+  }
+
   settingsBtn.onclick = openSettings;
   cancelBtn.onclick = closeSettings;
   saveBtn.onclick = saveSettings;
   fetchModelsBtn.onclick = function () { refreshModels(); };
-  modelSelect.onchange = onModelChange;
+
+  modelInput.oninput = function () {
+    renderModels(modelInput.value);
+    modelDropdown.style.display = "block";
+  };
+
+  modelInput.onfocus = function () {
+    if (allModels.length > 0) {
+      renderModels(modelInput.value);
+      modelDropdown.style.display = "block";
+    }
+  };
+
+  modelInput.onblur = function () {
+    // Delay so tap on dropdown item registers before close
+    setTimeout(function () { modelDropdown.style.display = "none"; }, 200);
+  };
+
+  // Close dropdown when tapping outside
+  document.addEventListener("click", function (e) {
+    if (!modelInput.contains(e.target) && !modelDropdown.contains(e.target)) {
+      modelDropdown.style.display = "none";
+    }
+  });
 
   // ── Chat ─────────────────────────────────────────────────────────────
 
@@ -218,12 +253,7 @@
     .then(function (data) {
       currentConfig = data;
       if (data.model) {
-        modelSelect.innerHTML = "";
-        var opt = document.createElement("option");
-        opt.value = data.model;
-        opt.textContent = data.model;
-        opt.selected = true;
-        modelSelect.appendChild(opt);
+        modelInput.value = data.model;
       }
       if (data.base_url) {
         refreshModels();
