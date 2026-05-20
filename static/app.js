@@ -20,6 +20,46 @@
   var chatHistory = []; // {role, content}
   var currentConfig = {}; // cached session config
 
+  // ── Compatibility helpers ─────────────────────────────────────────────
+
+  // XHR wrapper replacing fetch()/Promise for WebKit 533 (Kobo Touch).
+  // body: plain object (will be JSON-stringified) or null for GET requests.
+  // onDone(data): called with parsed JSON on 2xx.
+  // onError(msg): called with error string on non-2xx or network failure.
+  function ajax(method, url, body, onDone, onError) {
+    var xhr = new XMLHttpRequest();
+    xhr.open(method, url, true);
+    if (body !== null) {
+      xhr.setRequestHeader("Content-Type", "application/json");
+    }
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      var data;
+      try { data = JSON.parse(xhr.responseText); } catch (e) { data = {}; }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        if (onDone) onDone(data);
+      } else {
+        var msg = (data && data.detail) ? data.detail : ("Request failed (" + xhr.status + ")");
+        if (onError) onError(msg);
+      }
+    };
+    xhr.onerror = function () {
+      if (onError) onError("Network error");
+    };
+    xhr.send(body !== null ? JSON.stringify(body) : null);
+  }
+
+  // Node.contains() is absent in WebKit 533. Walk parentNode chain instead.
+  function nodeContains(parent, child) {
+    if (parent === child) return true;
+    var node = child;
+    while (node) {
+      if (node === parent) return true;
+      node = node.parentNode;
+    }
+    return false;
+  }
+
   // ── Helpers ──────────────────────────────────────────────────────────
 
   function escapeHTML(s) {
@@ -60,7 +100,7 @@
     s = s.replace(/\x00US/g, "_");
 
     // Fractions: \frac{a}{b}
-    s = s.replace(/\\frac\{([^}]*)}\{([^}]*)}/g, '<span class="md-frac">$1<span class="md-frac-bar"></span>$2</span>');
+    s = s.replace(/\\frac\{([^}]*)}\\{([^}]*)}/g, '<span class="md-frac">$1<span class="md-frac-bar"></span>$2</span>');
 
     // Square root: \sqrt{...}
     s = s.replace(/\\sqrt\{([^}]*)}/g, "√<span style=\"text-decoration:overline\">$1</span>");
@@ -86,12 +126,12 @@
       "\\sum":"∑", "\\prod":"∏",
       "\\int":"∫", "\\oint":"∮",
       "\\cdot":"·", "\\ldots":"…", "\\cdots":"⋯",
-      "\\quad":" ", "\\qquad":"  ",
-      "\\,":" ", "\\;":" ", "\\!":"",
+      "\\quad":" ", "\\qquad":"  ",
+      "\\,":" ", "\\;":" ", "\\!":"",
       "\\{":"{", "\\}":"}"
     };
     for (var sym in symbols) {
-      s = s.replace(new RegExp(sym.replace(/([\\{}[\]])/g, "\\$1"), "g"), symbols[sym]);
+      s = s.replace(new RegExp(sym.replace(/([\\\{}[\]])/g, "\\$1"), "g"), symbols[sym]);
     }
 
     // Text in brackets: \text{...}
@@ -283,19 +323,18 @@
 
   function openSettings() {
     hideError();
-    // Load current values from server
-    fetch("/api/session/config", { method: "GET" })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
+    ajax("GET", "/api/session/config", null,
+      function (data) {
         cfgUrl.value = data.base_url || "";
         cfgKey.value = "";
         cfgKey.placeholder = data.has_api_key ? "(key saved — leave blank to keep)" : "sk-... or leave blank";
         overlay.style.display = "block";
-      })
-      .catch(function () {
+      },
+      function () {
         cfgUrl.value = "";
         overlay.style.display = "block";
-      });
+      }
+    );
   }
 
   function closeSettings() {
@@ -312,22 +351,15 @@
       showError("Base URL is required.");
       return;
     }
-    fetch("/api/session/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-      .then(function (r) {
-        if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || "Save failed"); });
-        return r.json();
-      })
-      .then(function () {
+    ajax("POST", "/api/session/config", body,
+      function () {
         closeSettings();
         refreshModels();
-      })
-      .catch(function (e) {
-        showError(e.message);
-      });
+      },
+      function (msg) {
+        showError(msg);
+      }
+    );
   }
 
   function renderModels(filter) {
@@ -359,36 +391,24 @@
 
   function saveModel(model) {
     currentConfig.model = model;
-    fetch("/api/session/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: model }),
-    })
-      .then(function (r) {
-        if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || "Save failed"); });
-        return r.json();
-      })
-      .then(function (data) {
+    ajax("POST", "/api/session/config", { model: model },
+      function (data) {
         currentConfig.model = data.model;
-      })
-      .catch(function (e) {
-        showError(e.message);
-      });
+      },
+      function (msg) {
+        showError(msg);
+      }
+    );
   }
 
   function refreshModels() {
-    fetch("/api/session/models", { method: "GET" })
-      .then(function (r) {
-        if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || "Fetch failed"); });
-        return r.json();
-      })
-      .then(function (data) {
+    ajax("GET", "/api/session/models", null,
+      function (data) {
         allModels = (data.data || []).map(function (m) { return m.id; });
         renderModels(modelInput.value);
-      })
-      .catch(function () {
-        // silently ignore — base_url may not be configured yet
-      });
+      },
+      null // silently ignore — base_url may not be configured yet
+    );
   }
 
   settingsBtn.onclick = openSettings;
@@ -414,7 +434,7 @@
 
   // Close dropdown when tapping outside
   document.addEventListener("click", function (e) {
-    if (!modelInput.contains(e.target) && !modelDropdown.contains(e.target)) {
+    if (!nodeContains(modelInput, e.target) && !nodeContains(modelDropdown, e.target)) {
       modelDropdown.style.display = "none";
     }
   });
@@ -431,34 +451,30 @@
     msgInput.value = "";
     setLoading(true);
 
-    fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: chatHistory }),
-    })
-      .then(function (r) {
-        if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || "Chat failed"); });
-        return r.json();
-      })
-      .then(function (data) {
+    ajax("POST", "/api/chat", { messages: chatHistory },
+      function (data) {
         var reply = data.reply || "(empty response)";
         appendMsg("assistant", reply);
         chatHistory.push({ role: "assistant", content: reply });
-      })
-      .catch(function (e) {
-        showError(e.message);
-      })
-      .finally(function () {
         setLoading(false);
         msgInput.focus();
-      });
+      },
+      function (msg) {
+        showError(msg);
+        setLoading(false);
+        msgInput.focus();
+      }
+    );
   }
 
   sendBtn.onclick = sendChat;
 
-  // Send on Enter (but shift+enter for newline)
+  // Send on Enter (but shift+enter for newline).
+  // Use keyCode as fallback for WebKit 533 which lacks e.key.
   msgInput.onkeydown = function (e) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    var key = e.key || "";
+    var code = e.keyCode || e.which || 0;
+    if ((key === "Enter" || code === 13) && !e.shiftKey) {
       e.preventDefault();
       sendChat();
     }
@@ -467,9 +483,8 @@
   // ── Init ──────────────────────────────────────────────────────────────
 
   // Pre-load session config so we know if settings are needed
-  fetch("/api/session/config", { method: "GET" })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
+  ajax("GET", "/api/session/config", null,
+    function (data) {
       currentConfig = data;
       if (data.model) {
         modelInput.value = data.model;
@@ -480,7 +495,9 @@
       if (!data.base_url) {
         openSettings();
       }
-    });
+    },
+    null
+  );
 
   msgInput.focus();
 })();

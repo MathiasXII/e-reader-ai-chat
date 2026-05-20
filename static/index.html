@@ -2,252 +2,68 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<!-- Added maximum-scale=1.0 to prevent accidental zooming on touch screens -->
+<!-- Crucial for old mobile WebKit to prevent scaling issues -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>E-Reader AI Chat</title>
 <style>
-/* 1. Base Reset with legacy vendor prefixes */
-* { 
-  margin: 0; 
-  padding: 0; 
-  -webkit-box-sizing: border-box; 
-  -moz-box-sizing: border-box; 
-  box-sizing: border-box; 
-}
-html, body { 
-  height: 100%; 
-  font-family: Georgia, serif; 
-  background: #fff; 
-  color: #000; 
-  font-size: 18px; 
-  /* Prevent whole page from bouncing, we only scroll the messages area */
-  overflow: hidden; 
-}
-
-/* 2. Absolute Layout Constraints */
-#app { 
-  position: absolute; 
-  top: 0; 
-  bottom: 0; 
-  left: 0; 
-  right: 0; 
-}
-
-/* --- HEADER --- */
-#header { 
-  position: absolute; 
-  top: 0; 
-  left: 0; 
-  right: 0; 
-  height: 55px; 
-  padding: 0 10px; 
-  border-bottom: 2px solid #000; 
-  background: #fff;
-  z-index: 10;
-}
-/* Floats must come first in DOM. Float left, Float right, then middle space. */
-#header h1 { 
-  float: left; 
-  font-size: 20px; 
-  line-height: 55px; /* Vertically centers the text to the 55px header */
-  margin-right: 10px; 
-  white-space: nowrap; 
-}
-#settings-btn { 
-  float: right; 
-  height: 34px;       /* Fixed height for exact alignment */
-  margin-top: 10px;   /* Pushes it down from the top exactly 10px */
-  margin-left: 15px;  /* Pushes the model selector away so they don't touch */
-  font-size: 16px; 
-  padding: 0 12px; 
-  background: #000; 
-  color: #fff; 
-  border: none; 
-  cursor: pointer;
-  line-height: 34px;  /* Centers the text vertically inside the button */
-}
-#model-wrap { 
-  display: block;
-  overflow: hidden; 
-  position: relative; 
-  padding-top: 10px;  /* Matches the button's margin-top exactly */
-}
-#model-input { 
-  width: 100%; 
-  height: 34px;       /* Matches the button's height exactly */
-  font-size: 16px; 
-  padding: 4px 8px;   /* Adjusted padding to fit the fixed height */
-  border: 2px solid #000; 
-  font-family: inherit; 
-  background: #fff; 
-}
-#model-dropdown { 
-  display: none; 
-  position: absolute; 
-  top: 44px; /* Adjusted to sit right beneath the new input height */
-  left: 0; 
-  width: 100%; 
-  max-height: 200px; 
-  overflow-y: scroll; 
-  -webkit-overflow-scrolling: touch;
-  background: #fff; 
-  border: 2px solid #000; 
-  z-index: 20; 
-}
-
-/* --- MESSAGES AREA --- */
-#error { 
-  color: red; 
-  padding: 10px 12px; 
-  display: none; 
-  font-size: 16px; 
-  position: absolute;
-  top: 55px;
-  left: 0;
-  right: 0;
-  z-index: 5;
-  background: #fff;
-}
-#messages { 
-  position: absolute; 
-  top: 57px; /* 55px header + 2px border */
-  bottom: 72px; /* 70px input bar + 2px border */
-  left: 0; 
-  right: 0; 
-  overflow-y: scroll; /* Force scrolling for old webkit */
-  -webkit-overflow-scrolling: touch; 
-  padding: 10px 12px; 
-  background: #fff;
-}
-.msg { margin-bottom: 14px; line-height: 1.5; word-wrap: break-word; }
-.msg-user { font-weight: bold; }
-.msg-assistant { white-space: normal; line-height: 1.6; }
-.msg-assistant p { margin: 0 0 10px; }
-.msg-assistant h1, .msg-assistant h2, .msg-assistant h3 { margin: 14px 0 6px; }
-.msg-assistant code.md-inline-code { font-family: monospace; background: #eee; padding: 1px 4px; font-size: 0.9em; }
-.msg-assistant pre.md-code-block { background: #f5f5f5; border: 1px solid #ccc; padding: 10px; overflow-x: scroll; margin: 10px 0; }
-.msg-assistant pre.md-code-block code { font-family: monospace; font-size: 0.9em; white-space: pre; }
-.msg-assistant ul, .msg-assistant ol { margin: 8px 0; padding-left: 24px; }
-.msg-assistant li { margin: 4px 0; }
-.msg-assistant blockquote { border-left: 3px solid #000; margin: 10px 0; padding: 4px 12px; color: #333; }
-
-/* Math layout fixed for pre-flexbox */
-.msg-assistant .md-math { font-family: Georgia, "Times New Roman", serif; }
-.msg-assistant .md-math-display { display: block; text-align: center; margin: 12px 0; padding: 8px 0; }
-.msg-assistant .md-math-inline { display: inline; }
-.md-frac { display: inline-block; vertical-align: middle; text-align: center; font-size: .85em; margin: 0 2px; }
-.md-frac-bar { display: block; width: 100%; border-top: 1px solid #000; margin: 1px 0; height: 0; }
-
-/* --- INPUT BAR --- */
-#input-bar { 
-  position: absolute; 
-  bottom: 0; 
-  left: 0; 
-  right: 0; 
-  height: 70px; 
-  border-top: 2px solid #000; 
-  padding: 10px; 
-  background: #fff;
-  z-index: 10;
-}
-#send-btn { 
-  float: right; 
-  width: 80px; 
-  height: 48px; 
-  font-size: 16px; 
-  background: #000; 
-  color: #fff; 
-  border: none; 
-  cursor: pointer; 
-  margin-left: 10px; 
-}
-#msg-input-wrap {
-  /* Fills space between left edge and floated button */
-  display: block;
-  overflow: hidden; 
-  height: 48px;
-}
-#msg-input { 
-  width: 100%; 
-  height: 100%; 
-  font-size: 16px; 
-  padding: 8px; 
-  border: 2px solid #000; 
-  font-family: inherit; 
-  resize: none; 
-}
-
-/* --- SETTINGS OVERLAY --- */
-#settings-overlay { 
-  display: none; 
-  position: absolute; 
-  top: 0; 
-  bottom: 0; 
-  left: 0; 
-  right: 0; 
-  /* Fallback solid color for extreme legacy, rgba for decent legacy */
-  background: #fff; 
-  background: rgba(0,0,0,.6); 
-  z-index: 50; 
-}
-#settings-panel { 
-  background: #fff; 
-  margin: 40px auto 0 auto; 
-  padding: 20px; 
-  border: 2px solid #000; 
-  max-width: 500px; 
-  width: 90%; 
-}
-#settings-panel h2 { margin-bottom: 14px; font-size: 20px; }
-#settings-panel label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 16px; }
-#settings-panel input { width: 100%; font-size: 16px; padding: 8px; border: 2px solid #000; margin-bottom: 14px; }
-.btn-row { 
-  margin-top: 10px; 
-  display: block; 
-  overflow: hidden; /* clear floats */
-}
-#save-btn { 
-  float: left; 
-  font-size: 16px; 
-  padding: 8px 16px; 
-  background: #000; 
-  color: #fff; 
-  border: none; 
-  cursor: pointer; 
-}
-#cancel-btn { 
-  float: right; 
-  font-size: 16px; 
-  padding: 8px 16px; 
-  background: #fff; 
-  color: #000; 
-  border: 2px solid #000; 
-  cursor: pointer; 
-}
+/* 1. Global Reset & Fallback Prefixes */
+*{ margin: 0; padding: 0; -webkit-box-sizing: border-box; -moz-box-sizing: border-box; box-sizing: border-box;} html, body{ height: 100%; width: 100%; font-family: Georgia, serif; background: #fff; color: #000; font-size: 18px; overflow: hidden; } #app{ position: relative; height: 100%; width: 100%;} #header{ position: absolute; top: 0; left: 0; right: 0; height: 55px; border-bottom: 2px solid #000; background: #fff; display: table; width: 100%; z-index: 10;}
+#header >div{ display: table-cell; vertical-align: middle; padding: 0 8px;}
+.hdr-left{ width: 1%; white-space: nowrap;}
+.hdr-mid{ width: 98%;}
+.hdr-right{ width: 1%; white-space: nowrap;} #header h1{ font-size: 20px; margin: 0;} #model-wrap{ position: relative; width: 100%;}
+#model-input{ width: 100%; font-size: 16px; padding: 6px 8px; border: 2px solid #000; font-family: inherit; background: #fff; color: #000; -webkit-appearance: none; } #model-dropdown{ display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: scroll; -webkit-overflow-scrolling: touch; background: #fff; border: 2px solid #000; border-top: none; z-index: 20;}
+.model-item{ padding: 12px 8px; font-size: 16px; border-bottom: 1px solid #000; }
+.model-item:last-child{ border-bottom: none;} #settings-btn{ font-size: 18px; padding: 6px 12px; background: #000; color: #fff; border: 2px solid #000; cursor: pointer; -webkit-border-radius: 4px; border-radius: 4px;} #messages{ position: absolute; top: 55px; bottom: 65px; left: 0; right: 0; overflow-y: scroll; -webkit-overflow-scrolling: touch; padding: 12px; background: #fff;}
+#error{ color: #000; font-weight: bold; border: 2px dashed #000; padding: 10px 12px; display: none; margin-bottom: 10px;} .msg{ margin-bottom: 16px; line-height: 1.5; word-wrap: break-word;}
+.msg-user{ font-weight: bold; font-size: 1.1em;}
+.msg-assistant{ line-height: 1.6;}
+.msg-assistant p{ margin: 0 0 10px;}
+.msg-assistant p:last-child{ margin-bottom: 0;}
+.msg-assistant h1, .msg-assistant h2, .msg-assistant h3{ margin: 14px 0 6px; line-height: 1.3;}
+.msg-assistant strong{ font-weight: bold;}
+.msg-assistant em{ font-style: italic;} .msg-assistant code.md-inline-code{ font-family: monospace; border: 1px solid #000; padding: 1px 4px; font-size: 0.9em;}
+.msg-assistant pre.md-code-block{ background: #fff; border: 2px solid #000; padding: 10px; overflow-x: scroll; -webkit-overflow-scrolling: touch; margin: 10px 0;}
+.msg-assistant pre.md-code-block code{ font-family: monospace; font-size: 0.9em; border: none; padding: 0;}
+.msg-assistant ul, .msg-assistant ol{ margin: 8px 0; padding-left: 24px;}
+.msg-assistant li{ margin: 6px 0;}
+.msg-assistant blockquote{ border-left: 4px solid #000; margin: 10px 0; padding: 4px 12px; font-style: italic;}
+.msg-assistant hr{ border: none; border-top: 2px solid #000; margin: 16px 0;} #input-bar{ position: absolute; bottom: 0; left: 0; right: 0; height: 65px; border-top: 2px solid #000; background: #fff; display: table; width: 100%; padding: 8px; z-index: 10;}
+#input-bar >div{ display: table-cell; vertical-align: middle;}
+.inp-left{ width: 100%; padding-right: 8px;}
+.inp-right{ width: 1%; white-space: nowrap;} #msg-input{ width: 100%; height: 45px; font-size: 16px; padding: 10px; border: 2px solid #000; font-family: inherit; resize: none; -webkit-appearance: none;}
+#send-btn{ height: 45px; font-size: 16px; padding: 0 16px; background: #000; color: #fff; border: 2px solid #000; cursor: pointer; -webkit-border-radius: 4px; border-radius: 4px;} #settings-overlay{ display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVQIW2NkYGD4z8DAwMgAI0AMDA4GAf+5m+MAAAAASUVORK5CYII=') repeat; z-index: 100;}
+#settings-panel{ background: #fff; margin: 10% auto; padding: 20px; border: 4px solid #000; width: 90%; max-width: 500px;}
+#settings-panel h2{ margin-bottom: 14px; font-size: 20px;}
+#settings-panel label{ display: block; margin-bottom: 6px; font-weight: bold;}
+#settings-panel input{ width: 100%; font-size: 16px; padding: 8px; border: 2px solid #000; margin-bottom: 16px; -webkit-appearance: none;}
+.btn-row{ margin-top: 10px;}
+.btn-row button{ font-size: 16px; padding: 10px 16px; border: 2px solid #000; cursor: pointer; -webkit-border-radius: 4px; border-radius: 4px; margin-right: 10px;}
+#save-btn{ background: #000; color: #fff;}
+#cancel-btn{ background: #fff; color: #000;}
 </style>
 </head>
 <body>
 <div id="app">
   <div id="header">
-    <h1>E-Reader AI</h1>
-    <!-- Floated elements must be listed first in HTML -->
-    <button id="settings-btn">Settings</button>
-    <div id="model-wrap">
-      <input id="model-input" type="text" placeholder="Select model..." autocomplete="off">
-      <div id="model-dropdown"></div>
+    <div class="hdr-left"><h1>E-Reader AI</h1></div>
+    <div class="hdr-mid">
+      <div id="model-wrap">
+        <input id="model-input" type="text" placeholder="Select model..." autocomplete="off">
+        <div id="model-dropdown"></div>
+      </div>
     </div>
+    <div class="hdr-right"><button id="settings-btn">Settings</button></div>
   </div>
   
-  <div id="error"></div>
-  
-  <div id="messages"></div>
+  <div id="messages">
+    <div id="error"></div>
+    <!-- Messages render here -->
+  </div>
   
   <div id="input-bar">
-    <!-- Floated send button listed first -->
-    <button id="send-btn">Send</button>
-    <div id="msg-input-wrap">
-      <textarea id="msg-input" placeholder="Type a message..."></textarea>
-    </div>
+    <div class="inp-left"><textarea id="msg-input" placeholder="Type a message..."></textarea></div>
+    <div class="inp-right"><button id="send-btn">Send</button></div>
   </div>
 </div>
 
