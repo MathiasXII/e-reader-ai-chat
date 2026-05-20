@@ -32,13 +32,6 @@ pip install -r requirements.txt
 # Start server (foreground, Ctrl+C to stop, auto-kills existing on same port)
 .\start.ps1                    # default: port 8000, host 0.0.0.0
 .\start.ps1 -Port 9000         # custom port
-
-# Stop a running/background server by port
-.\stop.ps1                     # default: port 8000
-.\stop.ps1 -Port 9000          # custom port
-
-# Alternative: run directly
-python -m uvicorn server:app --host 0.0.0.0 --port 8000
 ```
 
 ## Key Constraints
