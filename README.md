@@ -1,3 +1,5 @@
+![App screenshot](./screenshots/screenshot.png)
+
 > **⚠️ AI-Generated Code Disclaimer**
 > This project was written entirely by AI. It has not undergone formal code review, security auditing, or rigorous testing. Use at your own risk.
 
@@ -55,11 +57,24 @@ pip install -r requirements.txt
 python -m uvicorn server:app --host 0.0.0.0 --port 8000
 ```
 
-Or use the included PowerShell script:
+Or use the included startup script:
 
+**PowerShell (Windows):**
 ```powershell
 .\start.ps1                    # default: port 8000
 .\start.ps1 -Port 9000         # custom port
+```
+
+**Linux:**
+```bash
+./start.sh                     # default: port 8000
+./start.sh --port 9000        # custom port
+```
+
+**macOS:**
+```bash
+./start.command                # default: port 8000
+./start.command --port 9000   # custom port
 ```
 
 ### Configure
