@@ -41,7 +41,7 @@ E-Reader Browser ──HTTP──▸ Gateway (FastAPI) ──HTTP──▸ OpenA
 ### Prerequisites
 
 - Python 3.10+
-- An OpenAI-compatible LLM endpoint (e.g., [LM Studio](https://lmstudio.ai/), [Ollama](https://ollama.com/), [text-generation-webui](https://github.com/oobabooga/text-generation-webui), or any cloud API like Venice.ai)
+- An OpenAI-compatible LLM endpoint (e.g., [LM Studio](https://lmstudio.ai/), [Ollama](https://ollama.com/), [text-generation-webui](https://github.com/oobabooga/text-generation-webui), or any cloud API like [Venice.ai](https://venice.ai/))
 
 ### Install & Run
 
