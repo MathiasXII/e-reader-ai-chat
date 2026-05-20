@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Kindle LLM is a gateway web app that lets a Kindle Scribe browser chat with an OpenAI-compatible LLM endpoint. The Kindle browser only talks to the gateway (same-origin, plain HTTP on LAN), and the gateway proxies requests to the configured base URL (restricted to private/LAN addresses only).
+E-Reader LLM is a gateway web app that lets an e-reader browser chat with an OpenAI-compatible LLM endpoint. The e-reader browser only talks to the gateway (same-origin, plain HTTP on LAN), and the gateway proxies requests to the configured base URL.
 
-Target deployment: LAN-only, plain HTTP, running on a PC accessible to the Kindle on the same network.
+Target deployment: LAN-only, plain HTTP, running on a PC accessible to the e-reader on the same network.
 
 ## Architecture
 
 ```
-Kindle Browser ──HTTP──▸ Gateway (FastAPI) ──HTTP──▸ OpenAI-compatible endpoint
+E-Reader Browser ──HTTP──▸ Gateway (FastAPI) ──HTTP──▸ OpenAI-compatible endpoint
                            │
                            ├─ Serves static/ (index.html, app.js)
                            ├─ /api/session/config  — per-session base_url, model, api_key
@@ -19,8 +19,8 @@ Kindle Browser ──HTTP──▸ Gateway (FastAPI) ──HTTP──▸ OpenAI-
                            └─ /api/chat             — proxy: POST {base_url}/chat/completions
 ```
 
-- **server.py** — Single-file FastAPI backend. Session state is in-memory (dict keyed by cookie `sid`). All LLM traffic is proxied server-side so the Kindle never hits CORS or mixed-content issues. The `_is_private_url()` function enforces that only RFC1918/localhost/.local/bare-hostname base URLs are allowed.
-- **static/index.html** — Kindle-friendly chat UI. No frameworks. Minimal CSS (black-on-white, large touch targets, Georgia serif font).
+- **server.py** — Single-file FastAPI backend. Session state is in-memory (dict keyed by cookie `sid`). All LLM traffic is proxied server-side so the e-reader never hits CORS or mixed-content issues.
+- **static/index.html** — E-reader-friendly chat UI. No frameworks. Minimal CSS (black-on-white, large touch targets, Georgia serif font).
 - **static/app.js** — Plain ES5-ish JS. No build step. Uses `fetch()` for same-origin API calls. Sends full chat history on each request. Settings panel opens automatically if no `base_url` is configured.
 
 ## Commands
@@ -36,16 +36,15 @@ pip install -r requirements.txt
 
 ## Key Constraints
 
-- **LAN-only base URLs**: The `_is_private_url()` function in server.py rejects any base URL that isn't a private IP, localhost, `.local`, or a bare hostname. Do not weaken this check without understanding the SSRF implications.
 - **Session state**: By default, sessions are in-memory and lost on restart. Set `PERSIST_SESSIONS=1` in `.env` to save session config (base_url, model, api_key) to `sessions.json` so it survives restarts.
-- **No JS frameworks**: The frontend must stay compatible with the Kindle Scribe's limited browser. No React/Vue/TypeScript bundlers. Use plain JS compatible with older engines.
+- **No JS frameworks**: The frontend must stay compatible with e-reader browsers (limited engine support). No React/Vue/TypeScript bundlers. Use plain JS compatible with older engines.
 - **Chat is non-streaming**: Both the gateway and frontend currently use `stream: false`. The entire response is returned at once. Streaming (SSE) could be added later as an enhancement.
 - **No localStorage**: Session config lives server-side in cookies (`sid`). The frontend does not use localStorage or sessionStorage.
 - **`.env.example` must stay in sync**: Whenever a new env var is added to the project, update both `.env.example` and the documentation. `.env.example` serves as the template; users copy it to `.env` and fill in their values.
 
-## Unsupported CSS (Kindle Scribe browser)
+## Unsupported CSS (E-Reader browser)
 
-The Kindle Scribe runs an older Chromium engine. Avoid CSS features from these specifications:
+E-readers typically run older Chromium engines. Avoid CSS features from these specifications:
 
 - **CSS Box Alignment Module Level 3** — `gap` on flex containers does not work. Use `margin` on flex children instead.
-- **Unknown baseline** — When in doubt, stick to CSS features supported in Chrome ≤70. If a property is only in a Working Draft or requires Chrome 84+, assume the Kindle does not support it.
+- **Unknown baseline** — When in doubt, stick to CSS features supported in Chrome ≤70. If a property is only in a Working Draft or requires Chrome 84+, assume the e-reader does not support it.

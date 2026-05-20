@@ -1,6 +1,5 @@
-"""Kindle LLM Gateway — minimal FastAPI server that proxies to OpenAI-compatible
-endpoints on private/LAN addresses only. Serves a static chat UI optimised for
-the Kindle Scribe browser."""
+"""E-Reader LLM Gateway — minimal FastAPI server that proxies to OpenAI-compatible
+endpoints. Serves a static chat UI optimised for e-reader browsers."""
 
 import json
 import os

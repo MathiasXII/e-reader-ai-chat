@@ -15,6 +15,6 @@ if ($existing) {
     Start-Sleep -Seconds 2
 }
 
-Write-Host "Starting Kindle LLM server on http://${Host_}:${Port}/" -ForegroundColor Green
+Write-Host "Starting E-Reader LLM server on http://${Host_}:${Port}/" -ForegroundColor Green
 Write-Host "Press Ctrl+C to stop." -ForegroundColor Yellow
 python -m uvicorn server:app --host $Host_ --port $Port

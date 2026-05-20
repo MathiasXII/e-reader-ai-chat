@@ -1,4 +1,4 @@
-/* Kindle LLM — minimal no-framework JS for Kindle Scribe browser */
+/* E-Reader LLM — minimal no-framework JS for e-reader browsers */
 
 (function () {
   "use strict";
