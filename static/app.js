@@ -10,11 +10,9 @@
   var settingsBtn = document.getElementById("settings-btn");
   var overlay = document.getElementById("settings-overlay");
   var cfgUrl = document.getElementById("cfg-url");
-  var cfgModel = document.getElementById("cfg-model");
   var cfgKey = document.getElementById("cfg-key");
   var saveBtn = document.getElementById("save-btn");
   var cancelBtn = document.getElementById("cancel-btn");
-  var fetchModelsBtn = document.getElementById("fetch-models-btn");
   var modelInput = document.getElementById("model-input");
   var modelDropdown = document.getElementById("model-dropdown");
 
@@ -290,14 +288,12 @@
       .then(function (r) { return r.json(); })
       .then(function (data) {
         cfgUrl.value = data.base_url || "";
-        cfgModel.value = data.model || "";
         cfgKey.value = "";
         cfgKey.placeholder = data.has_api_key ? "(key saved — leave blank to keep)" : "sk-... or leave blank";
         overlay.style.display = "block";
       })
       .catch(function () {
         cfgUrl.value = "";
-        cfgModel.value = "";
         overlay.style.display = "block";
       });
   }
@@ -310,7 +306,6 @@
     hideError();
     var body = {
       base_url: cfgUrl.value.trim(),
-      model: cfgModel.value.trim(),
       api_key: cfgKey.value,
     };
     if (!body.base_url) {
@@ -399,7 +394,6 @@
   settingsBtn.onclick = openSettings;
   cancelBtn.onclick = closeSettings;
   saveBtn.onclick = saveSettings;
-  fetchModelsBtn.onclick = function () { refreshModels(); };
 
   modelInput.oninput = function () {
     renderModels(modelInput.value);
