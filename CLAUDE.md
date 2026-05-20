@@ -34,6 +34,16 @@ pip install -r requirements.txt
 .\start.ps1 -Port 9000         # custom port
 ```
 
+```bash
+# Linux
+./start.sh                    # default: port 8000, host 0.0.0.0
+./start.sh --port 9000         # custom port
+
+# macOS (double-click or run from terminal)
+./start.command                # default: port 8000, host 0.0.0.0
+./start.command --port 9000   # custom port
+```
+
 ## Key Constraints
 
 - **Session state**: By default, sessions are in-memory and lost on restart. Set `PERSIST_SESSIONS=1` in `.env` to save session config (base_url, model, api_key) to `sessions.json` so it survives restarts.
