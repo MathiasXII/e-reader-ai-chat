@@ -41,7 +41,7 @@ E-Reader Browser ──HTTP──▸ Gateway (FastAPI) ──HTTP──▸ OpenA
 ### Prerequisites
 
 - Python 3.10+
-- An OpenAI-compatible LLM endpoint (e.g., [LM Studio](https://lmstudio.ai/), [Ollama](https://ollama.com/), [text-generation-webui](https://github.com/oobabooga/text-generation-webui), or any cloud API like OpenAI)
+- An OpenAI-compatible LLM endpoint (e.g., [LM Studio](https://lmstudio.ai/), [Ollama](https://ollama.com/), [text-generation-webui](https://github.com/oobabooga/text-generation-webui), or any cloud API like https://api.venice.ai/api/v1)
 
 ### Install & Run
 
@@ -81,7 +81,7 @@ Or use the included startup script:
 
 1. Open `http://<your-pc-ip>:8000` on your e-reader or any browser on the same network
 2. The settings panel opens automatically if no base URL is configured
-3. Enter your LLM endpoint's base URL (e.g., `http://192.168.1.17:1234/v1` or `https://api.openai.com/v1`)
+3. Enter your LLM endpoint's base URL (e.g., `http://192.168.1.17:1234/v1` or `https://api.venice.ai/api/v1`)
 4. Optionally enter an API key
 5. Select a model from the dropdown
 6. Start chatting
