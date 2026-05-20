@@ -2,20 +2,45 @@
 endpoints on private/LAN addresses only. Serves a static chat UI optimised for
 the Kindle Scribe browser."""
 
+import json
+import os
+import tempfile
 import uuid
 from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+load_dotenv()
+
+PERSIST_SESSIONS = os.environ.get("PERSIST_SESSIONS", "0") == "1"
+SESSIONS_FILE = Path(__file__).parent / "sessions.json"
+
 app = FastAPI()
 
-# ── In-memory session store (resets on server restart) ────────────────────
+# ── Session store ────────────────────────────────────────────────────────
 sessions: dict[str, dict] = {}
 
+if PERSIST_SESSIONS and SESSIONS_FILE.exists():
+    sessions = json.loads(SESSIONS_FILE.read_text("utf-8"))
+
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+def _persist_sessions() -> None:
+    """Atomically write sessions to disk when persistence is enabled."""
+    if not PERSIST_SESSIONS:
+        return
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=str(SESSIONS_FILE.parent))
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(sessions, f, ensure_ascii=False)
+        os.replace(tmp_path, str(SESSIONS_FILE))
+    except OSError:
+        pass
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -71,6 +96,8 @@ async def set_config(request: Request):
     if api_key:
         sess["api_key"] = api_key
     # empty string = keep existing key (field is always blank on open for security)
+
+    _persist_sessions()
 
     response = JSONResponse({
         "base_url": sess.get("base_url", ""),

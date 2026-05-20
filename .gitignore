@@ -13,6 +13,10 @@ build/
 # Environment / secrets
 .env
 .env.*
+!.env.example
+
+# Persisted sessions
+sessions.json
 
 # IDE
 .vscode/

@@ -37,7 +37,7 @@ pip install -r requirements.txt
 ## Key Constraints
 
 - **LAN-only base URLs**: The `_is_private_url()` function in server.py rejects any base URL that isn't a private IP, localhost, `.local`, or a bare hostname. Do not weaken this check without understanding the SSRF implications.
-- **Session state is in-memory**: Restarting the server clears all sessions. The frontend re-reads config from `/api/session/config` on load, so users just need to re-enter settings.
+- **Session state**: By default, sessions are in-memory and lost on restart. Set `PERSIST_SESSIONS=1` in `.env` to save session config (base_url, model, api_key) to `sessions.json` so it survives restarts.
 - **No JS frameworks**: The frontend must stay compatible with the Kindle Scribe's limited browser. No React/Vue/TypeScript bundlers. Use plain JS compatible with older engines.
 - **Chat is non-streaming**: Both the gateway and frontend currently use `stream: false`. The entire response is returned at once. Streaming (SSE) could be added later as an enhancement.
 - **No localStorage**: Session config lives server-side in cookies (`sid`). The frontend does not use localStorage or sessionStorage.
