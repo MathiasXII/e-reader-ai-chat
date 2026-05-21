@@ -131,7 +131,13 @@ If users want to identify themselves (e.g. shared family device):
 
 ### Extension: Real authentication
 
-If real authentication is ever needed (public deployment), the file-based approach supports it without rewrite:
+**Status**: postponed
+
+Authentication would add login friction that e-readers handle poorly — form-based login, redirects, and token refresh all fight against devices that lose cookies on sleep or restart. The `?device=` bookmark mechanism already provides stable session recovery, which is what e-readers actually need.
+
+More fundamentally, this is a LAN-only tool. Anyone on the network can reach the server directly, so auth provides a false sense of security without HTTPS. If real isolation is ever needed, running separate instances on different ports per trusted user group is simpler and more honest than bolting auth onto a single instance.
+
+If this is ever revisited (e.g. for a public deployment), the file-based approach supports it without a rewrite:
 
 - Add a `users/` directory with JSON profile files (`username.json` containing `password_hash`, etc.)
 - Add `user_id` field to conversation files
