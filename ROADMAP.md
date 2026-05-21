@@ -7,22 +7,6 @@
 - **Major version** (v1.0): All core initiatives complete, API considered stable
 - Initiatives are not tied to versions. Assign a version when work begins.
 
-## Extension Points
-
-The architecture is designed to accommodate future features without breaking changes:
-
-| Extension | What to add | Schema impact |
-|-----------|-------------|---------------|
-| Real authentication | `users` table, `user_id` on conversations | Additive column |
-| Shared conversations | `conversation_members` join table | New table |
-| System prompts | `system_prompt` column on conversations | Additive column |
-| File attachments | `attachments` table, file storage | New table + storage |
-| Multiple LLM profiles | `profiles` table, profile selection in UI | New table + UI |
-| Webhook notifications | `webhooks` table, async notification on completion | New table |
-| Rate limiting | In-memory or Redis counter per session | No schema change |
-
----
-
 ## Conversation Persistence
 
 **Status**: planned
