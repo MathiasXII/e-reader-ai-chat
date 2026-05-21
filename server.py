@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -17,6 +18,7 @@ load_dotenv()
 
 PERSIST_SESSIONS = os.environ.get("PERSIST_SESSIONS", "0") == "1"
 SESSIONS_FILE = Path(__file__).parent / "sessions.json"
+DATA_DIR = os.environ.get("DATA_DIR", "data") or ""
 
 app = FastAPI()
 
@@ -40,6 +42,45 @@ def _persist_sessions() -> None:
         os.replace(tmp_path, str(SESSIONS_FILE))
     except OSError:
         pass
+
+
+# ── Conversation persistence helpers ──────────────────────────────────────
+
+def _conversation_dir(session_id: str) -> Path:
+    return Path(DATA_DIR) / session_id / "conversations"
+
+
+def _conversation_path(session_id: str, conv_id: str) -> Path:
+    return _conversation_dir(session_id) / f"{conv_id}.json"
+
+
+def _read_conversation(session_id: str, conv_id: str) -> dict | None:
+    path = _conversation_path(session_id, conv_id)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text("utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _write_conversation(session_id: str, conv_id: str, data: dict) -> None:
+    conv_dir = _conversation_dir(session_id)
+    path = _conversation_path(session_id, conv_id)
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=str(conv_dir))
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, str(path))
+    except OSError:
+        pass
+
+
+def _ensure_conversation_dir(session_id: str) -> None:
+    if not DATA_DIR:
+        return
+    conv_dir = _conversation_dir(session_id)
+    conv_dir.mkdir(parents=True, exist_ok=True)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -102,6 +143,8 @@ async def set_config(request: Request):
         sess["display_names"] = bool(display_names)
 
     _persist_sessions()
+    if DATA_DIR:
+        _ensure_conversation_dir(sid)
 
     response = JSONResponse({
         "base_url": sess.get("base_url", ""),
@@ -133,6 +176,125 @@ async def list_models(request: Request):
     return response
 
 
+# ── Conversation CRUD ─────────────────────────────────────────────────────
+
+@app.get("/api/conversations")
+async def list_conversations(request: Request):
+    sid, sess = _get_session(request)
+    if not DATA_DIR:
+        return JSONResponse({"conversations": []})
+
+    conv_dir = _conversation_dir(sid)
+    if not conv_dir.exists():
+        return JSONResponse({"conversations": []})
+
+    conversations = []
+    for fname in os.listdir(conv_dir):
+        if not fname.endswith(".json"):
+            continue
+        conv_id = fname[:-5]
+        data = _read_conversation(sid, conv_id)
+        if data and data.get("session_id") == sid:
+            conversations.append({
+                "id": data["id"],
+                "title": data.get("title", ""),
+                "created_at": data.get("created_at", ""),
+                "updated_at": data.get("updated_at", ""),
+            })
+
+    conversations.sort(key=lambda c: c.get("updated_at", ""), reverse=True)
+    response = JSONResponse({"conversations": conversations})
+    response.set_cookie("sid", sid, httponly=True, max_age=86400 * 30)
+    return response
+
+
+@app.post("/api/conversations")
+async def create_conversation(request: Request):
+    sid, sess = _get_session(request)
+    if not DATA_DIR:
+        raise HTTPException(400, "Conversation persistence not enabled")
+
+    body = await request.json()
+    title = (body.get("title") or "").strip()
+
+    conv_id = uuid.uuid4().hex[:8]
+    now = datetime.now().isoformat(timespec="seconds")
+    conversation = {
+        "id": conv_id,
+        "session_id": sid,
+        "title": title,
+        "created_at": now,
+        "updated_at": now,
+        "messages": [],
+    }
+
+    _ensure_conversation_dir(sid)
+    _write_conversation(sid, conv_id, conversation)
+
+    response = JSONResponse(conversation)
+    response.set_cookie("sid", sid, httponly=True, max_age=86400 * 30)
+    return response
+
+
+@app.get("/api/conversations/{conv_id}")
+async def get_conversation(conv_id: str, request: Request):
+    sid, sess = _get_session(request)
+    if not DATA_DIR:
+        raise HTTPException(404, "Conversation not found")
+
+    data = _read_conversation(sid, conv_id)
+    if not data or data.get("session_id") != sid:
+        raise HTTPException(404, "Conversation not found")
+
+    response = JSONResponse(data)
+    response.set_cookie("sid", sid, httponly=True, max_age=86400 * 30)
+    return response
+
+
+@app.delete("/api/conversations/{conv_id}")
+async def delete_conversation(conv_id: str, request: Request):
+    sid, sess = _get_session(request)
+    if not DATA_DIR:
+        raise HTTPException(404, "Conversation not found")
+
+    data = _read_conversation(sid, conv_id)
+    if not data or data.get("session_id") != sid:
+        raise HTTPException(404, "Conversation not found")
+
+    path = _conversation_path(sid, conv_id)
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+    response = JSONResponse({"ok": True})
+    response.set_cookie("sid", sid, httponly=True, max_age=86400 * 30)
+    return response
+
+
+@app.patch("/api/conversations/{conv_id}")
+async def update_conversation(conv_id: str, request: Request):
+    sid, sess = _get_session(request)
+    if not DATA_DIR:
+        raise HTTPException(404, "Conversation not found")
+
+    data = _read_conversation(sid, conv_id)
+    if not data or data.get("session_id") != sid:
+        raise HTTPException(404, "Conversation not found")
+
+    body = await request.json()
+    new_title = body.get("title")
+    if new_title is not None:
+        data["title"] = new_title
+    data["updated_at"] = datetime.now().isoformat(timespec="seconds")
+
+    _write_conversation(sid, conv_id, data)
+
+    response = JSONResponse(data)
+    response.set_cookie("sid", sid, httponly=True, max_age=86400 * 30)
+    return response
+
+
 @app.post("/api/chat")
 async def chat(request: Request):
     body = await request.json()
@@ -159,6 +321,33 @@ async def chat(request: Request):
     if not payload["model"]:
         raise HTTPException(400, "model is required (set in session config or request)")
 
+    # Conversation persistence: load and verify if conversation_id provided
+    conversation_id = body.get("conversation_id")
+    conversation = None
+    if conversation_id and DATA_DIR:
+        conversation = _read_conversation(sid, conversation_id)
+        if not conversation or conversation.get("session_id") != sid:
+            raise HTTPException(404, "Conversation not found")
+
+    # Persist user message before sending to LLM
+    if conversation is not None:
+        now = datetime.now().isoformat(timespec="seconds")
+        user_content = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                user_content = m.get("content", "")
+                break
+        conversation["messages"].append({
+            "role": "user",
+            "content": user_content,
+            "created_at": now,
+        })
+        # Auto-generate title from first user message if title is empty
+        if not conversation.get("title") and user_content:
+            conversation["title"] = user_content.replace("\n", " ")[:40]
+        conversation["updated_at"] = now
+        _write_conversation(sid, conversation_id, conversation)
+
     headers = {"Content-Type": "application/json"}
     if sess.get("api_key"):
         headers["Authorization"] = f"Bearer {sess['api_key']}"
@@ -180,7 +369,22 @@ async def chat(request: Request):
     if choices:
         content = choices[0].get("message", {}).get("content", "")
 
-    response = JSONResponse({"reply": content, "model": payload["model"]})
+    # Persist assistant message after receiving LLM response
+    if conversation is not None:
+        now = datetime.now().isoformat(timespec="seconds")
+        conversation["messages"].append({
+            "role": "assistant",
+            "content": content,
+            "created_at": now,
+        })
+        conversation["updated_at"] = now
+        _write_conversation(sid, conversation_id, conversation)
+
+    result = {"reply": content, "model": payload["model"]}
+    if conversation_id and DATA_DIR:
+        result["conversation_id"] = conversation_id
+
+    response = JSONResponse(result)
     response.set_cookie("sid", sid, httponly=True, max_age=86400 * 30)
     return response
 

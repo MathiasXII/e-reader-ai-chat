@@ -19,6 +19,7 @@
 
   var allModels = []; // full list of model ids from API
   var chatHistory = []; // {role, content}
+  var currentConversationId = null;
   var currentConfig = {}; // cached session config
 
   // ── Compatibility helpers ─────────────────────────────────────────────
@@ -475,15 +476,40 @@
     msgInput.value = "";
     setLoading(true);
 
-    ajax("POST", "/api/chat", { messages: chatHistory },
-      function (data) {
+    if (currentConversationId) {
+      doSendChat();
+    } else {
+      var title = text.length > 40 ? text.substring(0, 40) + "..." : text;
+      title = title.replace(/[\r\n]+/g, " ").trim();
+      ajax("POST", "/api/conversations", { title: title },
+        function(data) {
+          currentConversationId = data.id;
+          doSendChat();
+        },
+        function() {
+          doSendChat();
+        }
+      );
+    }
+  }
+
+  function doSendChat() {
+    var body = { messages: chatHistory };
+    if (currentConversationId) {
+      body.conversation_id = currentConversationId;
+    }
+    ajax("POST", "/api/chat", body,
+      function(data) {
         var reply = data.reply || "(empty response)";
         appendMsg("assistant", reply);
         chatHistory.push({ role: "assistant", content: reply });
+        if (data.conversation_id) {
+          currentConversationId = data.conversation_id;
+        }
         setLoading(false);
         msgInput.focus();
       },
-      function (msg) {
+      function(msg) {
         showError(msg);
         setLoading(false);
         msgInput.focus();
@@ -518,6 +544,24 @@
       }
       if (data.base_url) {
         refreshModels();
+        ajax("GET", "/api/conversations", null,
+          function(convData) {
+            if (convData.conversations && convData.conversations.length > 0) {
+              var lastConv = convData.conversations[0];
+              currentConversationId = lastConv.id;
+              ajax("GET", "/api/conversations/" + lastConv.id, null,
+                function(conv) {
+                  if (conv.messages && conv.messages.length > 0) {
+                    chatHistory = conv.messages;
+                    renderAllMessages();
+                  }
+                },
+                null
+              );
+            }
+          },
+          null
+        );
       }
       if (!data.base_url) {
         openSettings();

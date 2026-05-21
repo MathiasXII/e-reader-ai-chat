@@ -9,7 +9,7 @@
 
 ## Conversation Persistence
 
-**Status**: planned
+**Status**: done
 
 Messages survive page refresh. No new UI — just make the current chat not disappear.
 
