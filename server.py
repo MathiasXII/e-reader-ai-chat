@@ -20,13 +20,28 @@ PERSIST_SESSIONS = os.environ.get("PERSIST_SESSIONS", "0") == "1"
 SESSIONS_FILE = Path(__file__).parent / "sessions.json"
 DATA_DIR = os.environ.get("DATA_DIR", "data") or ""
 
+DEFAULT_BASE_URL = os.environ.get("DEFAULT_BASE_URL", "").rstrip("/")
+DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "")
+DEFAULT_API_KEY = os.environ.get("DEFAULT_API_KEY", "")
+
 app = FastAPI()
 
 # ── Session store ────────────────────────────────────────────────────────
 sessions: dict[str, dict] = {}
+device_sessions: dict[str, str] = {}  # device name → session id
 
 if PERSIST_SESSIONS and SESSIONS_FILE.exists():
-    sessions = json.loads(SESSIONS_FILE.read_text("utf-8"))
+    try:
+        raw = json.loads(SESSIONS_FILE.read_text("utf-8"))
+        if isinstance(raw, dict) and "sessions" in raw:
+            # New format with device_sessions
+            sessions = raw["sessions"]
+            device_sessions = raw.get("device_sessions", {})
+        else:
+            # Legacy format — plain sessions dict
+            sessions = raw
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Warning: Failed to load {SESSIONS_FILE}: {e}. Starting with empty sessions.")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -38,7 +53,7 @@ def _persist_sessions() -> None:
     try:
         fd, tmp_path = tempfile.mkstemp(dir=str(SESSIONS_FILE.parent))
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(sessions, f, ensure_ascii=False)
+            json.dump({"sessions": sessions, "device_sessions": device_sessions}, f, ensure_ascii=False)
         os.replace(tmp_path, str(SESSIONS_FILE))
     except OSError:
         pass
@@ -85,11 +100,40 @@ def _ensure_conversation_dir(session_id: str) -> None:
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
+def _new_session() -> dict:
+    """Create a new session pre-populated with default config."""
+    sess: dict = {}
+    if DEFAULT_BASE_URL:
+        sess["base_url"] = DEFAULT_BASE_URL
+    if DEFAULT_MODEL:
+        sess["model"] = DEFAULT_MODEL
+    if DEFAULT_API_KEY:
+        sess["api_key"] = DEFAULT_API_KEY
+    return sess
+
+
 def _get_session(request: Request) -> tuple[str, dict]:
+    # 1. Device-based lookup (stable, survives cookie clears)
+    device = request.query_params.get("device", "").strip()
+    if device:
+        if device in device_sessions:
+            sid = device_sessions[device]
+            if sid in sessions:
+                return sid, sessions[sid]
+        # New device → create session and register it
+        sid = str(uuid.uuid4())
+        sessions[sid] = _new_session()
+        device_sessions[device] = sid
+        _persist_sessions()
+        if DATA_DIR:
+            _ensure_conversation_dir(sid)
+        return sid, sessions[sid]
+
+    # 2. Cookie-based lookup (fallback, current behaviour)
     sid = request.cookies.get("sid")
     if not sid or sid not in sessions:
         sid = str(uuid.uuid4())
-        sessions[sid] = {}
+        sessions[sid] = _new_session()
     return sid, sessions[sid]
 
 
@@ -179,7 +223,7 @@ async def list_models(request: Request):
 # ── Conversation CRUD ─────────────────────────────────────────────────────
 
 @app.get("/api/conversations")
-async def list_conversations(request: Request):
+async def list_conversations(request: Request, limit: int = 0, before: str = ""):
     sid, sess = _get_session(request)
     if not DATA_DIR:
         return JSONResponse({"conversations": []})
@@ -203,8 +247,15 @@ async def list_conversations(request: Request):
             })
 
     conversations.sort(key=lambda c: c.get("updated_at", ""), reverse=True)
+
+    # Cursor-based pagination: filter by 'before' (exclusive), then apply 'limit'
+    if before:
+        conversations = [c for c in conversations if c.get("updated_at", "") < before]
+    if limit > 0:
+        conversations = conversations[:limit]
+
     response = JSONResponse({"conversations": conversations})
-    response.set_cookie("sid", sid, httponly=True, max_age=86400 * 30)
+    response.set_cookie("sid", httponly=True, max_age=86400 * 30)
     return response
 
 

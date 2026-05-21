@@ -76,7 +76,7 @@ Each file is a self-contained, human-readable JSON document:
 
 ## Conversation Management UI
 
-**Status**: planned
+**Status**: done
 
 Let users browse, switch between, and manage multiple conversations.
 

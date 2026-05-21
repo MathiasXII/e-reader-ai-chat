@@ -16,6 +16,30 @@
   var modelInput = document.getElementById("model-input");
   var modelDropdown = document.getElementById("model-dropdown");
   var cfgDisplayNames = document.getElementById("cfg-display-names");
+  var convBtn = document.getElementById("conv-btn");
+  var convOverlay = document.getElementById("conv-overlay");
+  var convPanel = document.getElementById("conv-panel");
+  var convList = document.getElementById("conv-list");
+  var newChatBtn = document.getElementById("new-chat-btn");
+  var convCloseBtn = document.getElementById("conv-close-btn");
+  var confirmOverlay = document.getElementById("confirm-overlay");
+  var confirmMsg = document.getElementById("confirm-msg");
+  var confirmYesBtn = document.getElementById("confirm-yes");
+  var confirmNoBtn = document.getElementById("confirm-no");
+
+  // Stable device identifier from URL — survives cookie clears on e-readers
+  var deviceId = "";
+  try {
+    var devMatch = window.location.search.match(/[?&]device=([^&]+)/);
+    if (devMatch) deviceId = decodeURIComponent(devMatch[1]);
+  } catch (e) { /* old WebKit may not support URLSearchParams */ }
+
+  // Append ?device=X (or &device=X) to any API path
+  function apiUrl(path) {
+    if (!deviceId) return path;
+    var sep = path.indexOf("?") !== -1 ? "&" : "?";
+    return path + sep + "device=" + encodeURIComponent(deviceId);
+  }
 
   var allModels = []; // full list of model ids from API
   var chatHistory = []; // {role, content}
@@ -339,11 +363,173 @@
     sendBtn.textContent = on ? "Wait..." : "Send";
   }
 
+  // ── Confirm Modal ──────────────────────────────────────────────────────
+
+  var confirmCallback = null;
+
+  function showConfirm(message, onYes) {
+    confirmMsg.textContent = message;
+    confirmCallback = onYes;
+    // Delay to prevent old WebKit from firing the current tap
+    // on the newly-visible overlay
+    setTimeout(function() {
+      confirmOverlay.style.display = "block";
+    }, 100);
+  }
+
+  confirmYesBtn.onclick = function() {
+    confirmOverlay.style.display = "none";
+    if (confirmCallback) confirmCallback();
+    confirmCallback = null;
+  };
+
+  confirmNoBtn.onclick = function() {
+    confirmOverlay.style.display = "none";
+    confirmCallback = null;
+  };
+
+  // ── Conversation Management ─────────────────────────────────────────
+
+  function relativeTime(isoString) {
+    var now = new Date();
+    var then = new Date(isoString);
+    var diffMs = now - then;
+    var diffSecs = Math.floor(diffMs / 1000);
+    var diffMins = Math.floor(diffSecs / 60);
+    var diffHours = Math.floor(diffMins / 60);
+    var diffDays = Math.floor(diffHours / 24);
+
+    if (diffSecs < 60) {
+      return "just now";
+    } else if (diffMins < 60) {
+      return diffMins + "m ago";
+    } else if (diffHours < 24) {
+      return diffHours + "h ago";
+    } else {
+      return diffDays + "d ago";
+    }
+  }
+
+  function openConvPanel() {
+    convOverlay.style.display = "block";
+    loadConvList();
+  }
+
+  function closeConvPanel() {
+    convOverlay.style.display = "none";
+  }
+
+  function loadConvList() {
+    ajax("GET", apiUrl("/api/conversations"), null,
+      function(data) {
+        renderConvList(data.conversations || []);
+      },
+      function(msg) {
+        convList.innerHTML = "<p>Error loading conversations</p>";
+      }
+    );
+  }
+
+  function renderConvList(conversations) {
+    convList.innerHTML = "";
+    if (conversations.length === 0) {
+      convList.innerHTML = "<p style=\"padding: 12px 0; font-size: 14px;\">No conversations yet</p>";
+      return;
+    }
+
+    for (var i = 0; i < conversations.length; i++) {
+      var conv = conversations[i];
+      var item = document.createElement("div");
+      item.className = "conv-item" + (conv.id === currentConversationId ? " conv-item-active" : "");
+
+      var leftDiv = document.createElement("div");
+      leftDiv.className = "conv-item-left";
+
+      var titleDiv = document.createElement("div");
+      titleDiv.className = "conv-item-title";
+      titleDiv.textContent = conv.title || "Untitled";
+
+      var timeDiv = document.createElement("div");
+      timeDiv.className = "conv-item-time";
+      timeDiv.textContent = relativeTime(conv.updated_at);
+
+      leftDiv.appendChild(titleDiv);
+      leftDiv.appendChild(timeDiv);
+
+      var rightDiv = document.createElement("div");
+      rightDiv.className = "conv-item-right";
+
+      var deleteBtn = document.createElement("button");
+      deleteBtn.className = "conv-item-delete";
+      deleteBtn.innerHTML = "×";
+      deleteBtn.onclick = (function(convId, convTitle) {
+        return function(e) {
+          e.stopPropagation();
+          deleteConversation(convId, convTitle);
+        };
+      })(conv.id, conv.title);
+
+      rightDiv.appendChild(deleteBtn);
+
+      item.appendChild(leftDiv);
+      item.appendChild(rightDiv);
+
+      item.onclick = (function(convId) {
+        return function() {
+          switchConversation(convId);
+        };
+      })(conv.id);
+
+      convList.appendChild(item);
+    }
+  }
+
+  function switchConversation(convId) {
+    ajax("GET", apiUrl("/api/conversations/" + convId), null,
+      function(conv) {
+        currentConversationId = convId;
+        chatHistory = conv.messages || [];
+        renderAllMessages();
+        closeConvPanel();
+        if (conv.title && modelInput.value) {
+          // Keep current model selection
+        }
+      },
+      function(msg) {
+        showError("Failed to load conversation: " + msg);
+      }
+    );
+  }
+
+  function newChat() {
+    currentConversationId = null;
+    chatHistory = [];
+    renderAllMessages();
+    closeConvPanel();
+  }
+
+  function deleteConversation(convId, title) {
+    showConfirm("Delete \"" + title + "\"?", function() {
+      ajax("DELETE", apiUrl("/api/conversations/" + convId), null,
+        function() {
+          if (convId === currentConversationId) {
+            newChat();
+          } else {
+            loadConvList();
+          }
+        },
+        function(msg) {
+          showError("Failed to delete: " + msg);
+        }
+      );
+    });
+  }
+
   // ── Settings ─────────────────────────────────────────────────────────
 
   function openSettings() {
     hideError();
-    ajax("GET", "/api/session/config", null,
+    ajax("GET", apiUrl("/api/session/config"), null,
       function (data) {
         cfgUrl.value = data.base_url || "";
         cfgKey.value = "";
@@ -374,7 +560,7 @@
       showError("Base URL is required.");
       return;
     }
-    ajax("POST", "/api/session/config", body,
+    ajax("POST", apiUrl("/api/session/config"), body,
       function (data) {
         currentConfig.display_names = data.display_names !== false;
         closeSettings();
@@ -416,7 +602,7 @@
 
   function saveModel(model) {
     currentConfig.model = model;
-    ajax("POST", "/api/session/config", { model: model },
+    ajax("POST", apiUrl("/api/session/config"), { model: model },
       function (data) {
         currentConfig.model = data.model;
       },
@@ -427,7 +613,7 @@
   }
 
   function refreshModels() {
-    ajax("GET", "/api/session/models", null,
+    ajax("GET", apiUrl("/api/session/models"), null,
       function (data) {
         allModels = (data.data || []).map(function (m) { return m.id; });
         renderModels(modelInput.value);
@@ -439,6 +625,16 @@
   settingsBtn.onclick = openSettings;
   cancelBtn.onclick = closeSettings;
   saveBtn.onclick = saveSettings;
+
+  // Conversation panel event bindings
+  convBtn.onclick = openConvPanel;
+  convCloseBtn.onclick = closeConvPanel;
+  newChatBtn.onclick = newChat;
+  convOverlay.onclick = function(e) {
+    if (e.target === convOverlay) {
+      closeConvPanel();
+    }
+  };
 
   modelInput.oninput = function () {
     renderModels(modelInput.value);
@@ -481,7 +677,7 @@
     } else {
       var title = text.length > 40 ? text.substring(0, 40) + "..." : text;
       title = title.replace(/[\r\n]+/g, " ").trim();
-      ajax("POST", "/api/conversations", { title: title },
+      ajax("POST", apiUrl("/api/conversations"), { title: title },
         function(data) {
           currentConversationId = data.id;
           doSendChat();
@@ -498,7 +694,7 @@
     if (currentConversationId) {
       body.conversation_id = currentConversationId;
     }
-    ajax("POST", "/api/chat", body,
+    ajax("POST", apiUrl("/api/chat"), body,
       function(data) {
         var reply = data.reply || "(empty response)";
         appendMsg("assistant", reply);
@@ -511,6 +707,9 @@
       },
       function(msg) {
         showError(msg);
+        if (currentConversationId && msg.indexOf("404") !== -1) {
+          currentConversationId = null;
+        }
         setLoading(false);
         msgInput.focus();
       }
@@ -533,7 +732,7 @@
   // ── Init ──────────────────────────────────────────────────────────────
 
   // Pre-load session config so we know if settings are needed
-  ajax("GET", "/api/session/config", null,
+  ajax("GET", apiUrl("/api/session/config"), null,
     function (data) {
       currentConfig = data;
       if (data.model) {
@@ -544,19 +743,21 @@
       }
       if (data.base_url) {
         refreshModels();
-        ajax("GET", "/api/conversations", null,
+        ajax("GET", apiUrl("/api/conversations"), null,
           function(convData) {
             if (convData.conversations && convData.conversations.length > 0) {
               var lastConv = convData.conversations[0];
-              currentConversationId = lastConv.id;
-              ajax("GET", "/api/conversations/" + lastConv.id, null,
+              ajax("GET", apiUrl("/api/conversations/" + lastConv.id), null,
                 function(conv) {
+                  currentConversationId = conv.id;
                   if (conv.messages && conv.messages.length > 0) {
                     chatHistory = conv.messages;
                     renderAllMessages();
                   }
                 },
-                null
+                function() {
+                  // Conversation file gone — skip, start fresh
+                }
               );
             }
           },
