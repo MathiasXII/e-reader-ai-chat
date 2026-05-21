@@ -9,9 +9,10 @@
 /* 1. Global Reset & Fallback Prefixes */
 *{ margin: 0; padding: 0; -webkit-box-sizing: border-box; -moz-box-sizing: border-box; box-sizing: border-box;} html, body{ height: 100%; width: 100%; font-family: Georgia, serif; background: #fff; color: #000; font-size: 18px; overflow: hidden; } #app{ position: relative; height: 100%; width: 100%;} #header{ position: absolute; top: 0; left: 0; right: 0; height: 55px; border-bottom: 2px solid #000; background: #fff; display: table; width: 100%; z-index: 10;}
 #header >div{ display: table-cell; vertical-align: middle; padding: 0 8px;}
-.hdr-left{ width: 1%; white-space: nowrap;}
+.hdr-ham{ width: 1%; white-space: nowrap; padding: 0 4px;}
+.hdr-title{ width: 1%; white-space: nowrap; padding: 0 4px 0 0;}
 .hdr-mid{ width: 98%;}
-.hdr-right{ width: 1%; white-space: nowrap;} #header h1{ font-size: 20px; margin: 0;} #model-wrap{ position: relative; width: 100%;}
+.hdr-right{ width: 1%; white-space: nowrap;} #header h1{ font-size: 20px; margin: 0; white-space: nowrap;} #model-wrap{ position: relative; width: 100%;}
 #model-input{ width: 100%; font-size: 16px; padding: 6px 8px; border: 2px solid #000; font-family: inherit; background: #fff; color: #000; -webkit-appearance: none; } #model-dropdown{ display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: scroll; -webkit-overflow-scrolling: touch; background: #fff; border: 2px solid #000; border-top: none; z-index: 20;}
 .model-item{ padding: 12px 8px; font-size: 16px; border-bottom: 1px solid #000; }
 .model-item:last-child{ border-bottom: none;} #settings-btn{ font-size: 18px; padding: 6px 12px; background: #000; color: #fff; border: 2px solid #000; cursor: pointer; -webkit-border-radius: 4px; border-radius: 4px;} #messages{ position: absolute; top: 55px; bottom: 65px; left: 0; right: 0; overflow-y: scroll; -webkit-overflow-scrolling: touch; padding: 12px; background: #fff;}
@@ -42,12 +43,52 @@
 .btn-row button{ font-size: 16px; padding: 10px 16px; border: 2px solid #000; cursor: pointer; -webkit-border-radius: 4px; border-radius: 4px; margin-right: 10px;}
 #save-btn{ background: #000; color: #fff;}
 #cancel-btn{ background: #fff; color: #000;}
+.conv-btn{ font-size: 24px; padding: 6px 10px; background: none; border: none; cursor: pointer; color: #000; vertical-align: middle; line-height: 1;}
+#conv-overlay{ display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVQIW2NkYGD4z8DAwMgAI0AMDA4GAf+5m+MAAAAASUVORK5CYII=') repeat; z-index: 50;}
+#conv-panel{ position: absolute; top: 0; left: 0; width: 85%; max-width: 300px; height: 100%; background: #fff; border-right: 2px solid #000;}
+.conv-panel-header{ display: table; width: 100%; height: 55px; border-bottom: 2px solid #000; padding: 0 12px;}
+.conv-panel-header > *{ display: table-cell; vertical-align: middle;}
+.conv-panel-title{ font-size: 20px; font-weight: bold; font-family: Georgia, serif; width: 100%;}
+.conv-close-btn{ font-size: 28px; padding: 4px 8px; background: none; border: none; cursor: pointer; color: #000; text-align: right; white-space: nowrap;}
+.new-chat-btn{ display: block; width: auto; height: 50px; font-size: 18px; font-weight: bold; padding: 12px; background: #000; color: #fff; border: 2px solid #000; cursor: pointer; -webkit-border-radius: 4px; border-radius: 4px; margin: 12px;}
+#conv-list{ position: absolute; top: 131px; bottom: 0; left: 0; right: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 0 12px 12px 12px;}
+.conv-item{ display: table; width: 100%; min-height: 60px; border: 2px solid #000; margin-bottom: 8px; padding: 10px 8px; cursor: pointer; background: #fff;}
+.conv-item-active{ background: #000; color: #fff;}
+.conv-item > *{ display: table-cell; vertical-align: middle;}
+.conv-item-left{ width: 90%;}
+.conv-item-right{ width: 10%; text-align: right;}
+.conv-item-title{ font-size: 16px; font-weight: bold; margin-bottom: 4px; font-family: Georgia, serif;}
+.conv-item-time{ font-size: 12px; opacity: 0.7;}
+.conv-item-delete{ font-size: 24px; padding: 4px 8px; background: none; border: none; cursor: pointer; color: #000;}
+.conv-item-active .conv-item-delete{ color: #fff;}
+#confirm-overlay{ display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVQIW2NkYGD4z8DAwMgAI0AMDA4GAf+5m+MAAAAASUVORK5CYII=') repeat; z-index: 200;}
+#confirm-panel{ background: #fff; margin: 20% auto; padding: 20px; border: 4px solid #000; width: 85%; max-width: 400px;}
+#confirm-panel p{ font-size: 18px; margin-bottom: 16px; line-height: 1.4;}
+#confirm-panel .btn-row{ margin-top: 10px;}
+#confirm-yes{ background: #000; color: #fff;}
+#confirm-no{ background: #fff; color: #000;}
 </style>
 </head>
 <body>
 <div id="app">
+  <div id="conv-overlay">
+    <div id="conv-panel">
+      <div class="conv-panel-header">
+        <span class="conv-panel-title">Chats</span>
+        <button id="conv-close-btn" class="conv-close-btn">×</button>
+      </div>
+      <button id="new-chat-btn" class="new-chat-btn">New Chat</button>
+      <div id="conv-list"></div>
+    </div>
+  </div>
+  
   <div id="header">
-    <div class="hdr-left"><h1>E-Reader AI</h1></div>
+    <div class="hdr-ham">
+      <button id="conv-btn" class="conv-btn">☰</button>
+    </div>
+    <div class="hdr-title">
+      <h1>E-Reader AI</h1>
+    </div>
     <div class="hdr-mid">
       <div id="model-wrap">
         <input id="model-input" type="text" placeholder="Select model..." autocomplete="off">
@@ -81,6 +122,16 @@
     <div class="btn-row">
       <button id="save-btn">Save</button>
       <button id="cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="confirm-overlay">
+  <div id="confirm-panel">
+    <p id="confirm-msg"></p>
+    <div class="btn-row">
+      <button id="confirm-yes" class="btn-row">Delete</button>
+      <button id="confirm-no" class="btn-row">Cancel</button>
     </div>
   </div>
 </div>
