@@ -93,7 +93,7 @@ Or use the included startup script:
 | Variable | Default | Description |
 |---|---|---|
 | `PERSIST_SESSIONS` | `0` | Set to `1` to save session config to `sessions.json` across restarts |
-| `DATA_DIR` | _(empty)_ | Directory for conversation persistence. Conversations are stored as JSON files under `DATA_DIR/<session-id>/conversations/`. Leave empty or unset to disable conversation persistence (ephemeral mode) |
+| `DATA_DIR` | `data` | Directory for conversation persistence. Conversations are stored as JSON files under `DATA_DIR/<session-id>/conversations/`. Leave empty or unset to disable conversation persistence (ephemeral mode) |
 | `DEFAULT_BASE_URL` | _(empty)_ | Default LLM base URL pre-populated into every new session (e.g. `http://192.168.1.17:1234/v1`) |
 | `DEFAULT_MODEL` | _(empty)_ | Default model name pre-populated into every new session |
 | `DEFAULT_API_KEY` | _(empty)_ | Default API key pre-populated into every new session |
