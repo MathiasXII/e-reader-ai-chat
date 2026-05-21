@@ -9,7 +9,7 @@
 
 ## Conversation Persistence
 
-**Status**: planned
+**Status**: done
 
 Messages survive page refresh. No new UI — just make the current chat not disappear.
 
@@ -76,7 +76,7 @@ Each file is a self-contained, human-readable JSON document:
 
 ## Conversation Management UI
 
-**Status**: planned
+**Status**: done
 
 Let users browse, switch between, and manage multiple conversations.
 

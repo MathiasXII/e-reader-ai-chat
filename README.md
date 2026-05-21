@@ -93,6 +93,10 @@ Or use the included startup script:
 | Variable | Default | Description |
 |---|---|---|
 | `PERSIST_SESSIONS` | `0` | Set to `1` to save session config to `sessions.json` across restarts |
+| `DATA_DIR` | _(empty)_ | Directory for conversation persistence. Conversations are stored as JSON files under `DATA_DIR/<session-id>/conversations/`. Leave empty or unset to disable conversation persistence (ephemeral mode) |
+| `DEFAULT_BASE_URL` | _(empty)_ | Default LLM base URL pre-populated into every new session (e.g. `http://192.168.1.17:1234/v1`) |
+| `DEFAULT_MODEL` | _(empty)_ | Default model name pre-populated into every new session |
+| `DEFAULT_API_KEY` | _(empty)_ | Default API key pre-populated into every new session |
 
 Copy `.env.example` to `.env` and customize:
 
@@ -111,6 +115,40 @@ PERSIST_SESSIONS=1
 
 This saves `base_url`, `model`, and `api_key` to `sessions.json`. The file is written atomically to prevent corruption.
 
+### Conversation Persistence
+
+Set `DATA_DIR` to store conversations as JSON files on disk, surviving server restarts:
+
+```bash
+# In .env
+DATA_DIR=data
+```
+
+Conversations are stored under `data/<session-id>/conversations/`. Leave `DATA_DIR` empty or unset to run in ephemeral mode (conversations lost on restart).
+
+### Default LLM Configuration
+
+E-readers may clear cookies unpredictably, wiping your session settings. You can pre-configure defaults in `.env` so every new session starts with your LLM endpoint already set up — no need to re-enter anything:
+
+```bash
+# In .env
+DEFAULT_BASE_URL=http://192.168.1.17:1234/v1
+DEFAULT_MODEL=my-model
+DEFAULT_API_KEY=sk-...
+```
+
+### Device Identity via URL (`?device=`)
+
+E-readers (especially Kindles) may clear cookies between sessions, losing your server-side session. The `?device=` parameter provides a stable identity that survives cookie clears:
+
+```
+http://<your-pc-ip>:8000/?device=kindle
+```
+
+The `device` value is sent with every API request so the server can look up (or create) the same session regardless of cookie state. **Bookmark this URL on your e-reader** — tapping the bookmark restores your session instantly, even after a cookie wipe.
+
+You can use any value for `device` — each value maps to its own session on the server. This lets you access the same session from multiple devices (e.g. `?device=kindle` on your e-reader and `?device=kindle` on your phone both share the same session).
+
 ## Architecture
 
 - **`server.py`** — Single-file FastAPI backend. Session state is in-memory (dict keyed by cookie `sid`). All LLM traffic is proxied server-side so the e-reader never hits CORS or mixed-content issues.
@@ -121,7 +159,8 @@ This saves `base_url`, `model`, and `api_key` to `sessions.json`. The file is wr
 
 - **Non-streaming** — Both the gateway and frontend use `stream: false`. The entire response is returned at once.
 - **No localStorage** — Session config lives server-side in cookies. The frontend does not use localStorage or sessionStorage.
-- **In-memory sessions by default** — Session state is lost on server restart unless `PERSIST_SESSIONS=1` is set.
+- **In-memory sessions by default** — Session state is lost on server restart unless `PERSIST_SESSIONS=1` is set. Conversations are ephemeral unless `DATA_DIR` is configured.
+- **Cookie volatility on e-readers** — E-readers may clear cookies between sessions. Use `?device=<name>` in the URL (saved as a bookmark) to maintain a stable identity across cookie clears.
 
 ## Browser Compatibility
 
