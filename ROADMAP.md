@@ -9,7 +9,7 @@
 
 ## Conversation Persistence
 
-**Status**: done
+**Status:** done
 
 Messages survive page refresh. No new UI — just make the current chat not disappear.
 
@@ -108,7 +108,11 @@ Let users browse, switch between, and manage multiple conversations.
 
 ## Multi-Session Support
 
-**Status**: planned
+**Status**: postponed
+
+> Authentication would add login friction that e-readers handle poorly — form-based login, redirects, and token refresh all fight against devices that lose cookies on sleep or restart. The `?device=` bookmark mechanism already provides stable session recovery, which is what e-readers actually need.
+>
+> More fundamentally, this is a LAN-only tool. Anyone on the network can reach the server directly, so auth provides a false sense of security without HTTPS. If real isolation is ever needed, running separate instances on different ports per trusted user group is simpler and more honest than bolting auth onto a single instance.
 
 Multiple people on the same LAN can use the gateway independently without seeing each other's conversations.
 
@@ -131,13 +135,7 @@ If users want to identify themselves (e.g. shared family device):
 
 ### Extension: Real authentication
 
-**Status**: postponed
-
-Authentication would add login friction that e-readers handle poorly — form-based login, redirects, and token refresh all fight against devices that lose cookies on sleep or restart. The `?device=` bookmark mechanism already provides stable session recovery, which is what e-readers actually need.
-
-More fundamentally, this is a LAN-only tool. Anyone on the network can reach the server directly, so auth provides a false sense of security without HTTPS. If real isolation is ever needed, running separate instances on different ports per trusted user group is simpler and more honest than bolting auth onto a single instance.
-
-If this is ever revisited (e.g. for a public deployment), the file-based approach supports it without a rewrite:
+**Status**: postponed 
 
 - Add a `users/` directory with JSON profile files (`username.json` containing `password_hash`, etc.)
 - Add `user_id` field to conversation files
@@ -151,29 +149,70 @@ If this is ever revisited (e.g. for a public deployment), the file-based approac
 
 **Status**: planned
 
-Progressive token rendering so users see the reply as it's generated, instead of waiting for the full response.
+Sentence-batched streaming so users see the reply progressively instead of waiting for the full response. Controlled per-session because e-reader display refresh behaviour varies by device.
+
+### Why sentence-batching, not per-token
+
+Per-token streaming (like ChatGPT on LCD) would cause hundreds of screen refreshes per response. On e-ink, each DOM change triggers a display controller refresh — on Kobo devices this is a full-screen flash, making per-token streaming unusable.
+
+Sentence-batching buffers tokens server-side until a sentence boundary (`.`, `?`, `!` + whitespace or newline), then sends the complete sentence as one chunk. This limits screen refreshes to ~5-15 per response — the same as turning a few pages — instead of hundreds.
+
+### Transport vs. rendering split
+
+The server **always** streams from the upstream LLM (`stream: True`) regardless of the user's setting. This enables the cancel button even when streaming display is off.
+
+| Layer | Behaviour | Controlled by |
+|---|---|---|
+| **Transport** (server ↔ LLM) | Always streaming | Server-side, always on |
+| **Rendering** (server → e-reader) | Sentence-batched chunks or single response | Per-session `streaming` option |
+
+### Session option
+
+- New `streaming` field in session config (default: `1`)
+- When ON: server sends sentence-batched chunks; client renders incrementally
+- When OFF: server buffers the full response internally, returns single JSON — identical to current behaviour
+- Toggle in the settings panel so Kobo users (full-screen flash on every DOM change) can turn it off
+- Both modes support the cancel button
 
 ### Backend
 
-- Modify `/api/chat` to accept `stream: true` in the request body
-- When streaming, proxy the upstream SSE stream to the client
-- Use `StreamingResponse` from FastAPI with `text/event-stream` content type
-- Each chunk forwarded as `data: {"delta": "token"}\n\n`
-- Final chunk: `data: [DONE]\n\n`
-- Persist the full message to the conversation file only after the stream completes
+- Modify `/api/chat` to always use `stream: True` when calling the upstream LLM
+- When session `streaming` is ON:
+  - Return `StreamingResponse` with newline-delimited JSON (`application/x-ndjson`)
+  - Buffer tokens until a sentence boundary, then emit a chunk line: `{"type":"chunk","content":"..."}`
+  - Final line: `{"type":"done","content":"full text","model":"...","conversation_id":"..."}`
+  - Error line: `{"type":"error","message":"..."}`
+- When session `streaming` is OFF:
+  - Buffer the full streamed response internally, then return a single `JSONResponse` — same shape as today
+  - Cancel still works: the server can abort the in-progress httpx request
+- Persist the full assistant message to the conversation file only after the stream completes
+- Add `POST /api/chat/cancel` endpoint to abort the current in-progress request for the session
+  - Tracks active requests per session using an in-memory dict of `asyncio.Event`
+  - Works regardless of streaming mode
 
 ### Frontend
 
-- Use `EventSource` or chunked XHR to read the stream
-- Append tokens to the current assistant message in real time
-- Re-render through `markdownToHTML()` on each chunk (or debounce to every N tokens for performance on slow e-reader engines)
-- Graceful fallback: if streaming fails or the browser doesn't support it, fall back to non-streaming (`stream: false`)
+- Add a **streaming toggle** (checkbox) to the settings panel
+- When streaming ON:
+  - Use XHR `onprogress` (not `EventSource` — poor support on old WebKit) to read the streaming response
+  - Parse newline-delimited JSON chunks from `xhr.responseText`
+  - Append each sentence chunk to the same assistant message element (update innerHTML, not create new elements)
+  - Re-render through `markdownToHTML()` on the full accumulated text per chunk (not delta) — ensures consistent formatting
+  - `scrollToBottom()` after each chunk
+- When streaming OFF:
+  - Use existing `ajax()` flow — no changes to the non-streaming path
+- **Cancel button**: replaces the "Wait..." text on the send button during generation
+  - Calls `POST /api/chat/cancel`
+  - Aborts the XHR request
+  - Leaves the partial response (if any) visible in the chat
+- Graceful fallback: if streaming XHR fails or the browser doesn't support `onprogress`, fall back to non-streaming
 
 ### Constraints
 
-- E-reader browsers may have poor SSE support — test on target devices before committing
-- XHR-based fallback must remain functional
-- Consider a `STREAM_ENABLED` env var (default: `0`) to make this opt-in
+- No `EventSource` — use XHR `onprogress` for WebKit 533 compatibility
+- No CSS changes for the cancel button — reuse the existing send button ("Wait..." → "Cancel" text swap)
+- Sentence boundary detection: `.`, `?`, `!`, `。`, `？`, `！` followed by whitespace or newline. Must not split on decimal points (`3.14`) or abbreviations (`e.g.`) — use a simple lookahead rule
+- E-reader browsers may have poor streaming support — test on target devices before considering this stable
 
 ---
 
