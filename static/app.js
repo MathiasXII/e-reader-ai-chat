@@ -16,6 +16,7 @@
   var modelInput = document.getElementById("model-input");
   var modelDropdown = document.getElementById("model-dropdown");
   var cfgDisplayNames = document.getElementById("cfg-display-names");
+  
   var convBtn = document.getElementById("conv-btn");
   var convOverlay = document.getElementById("conv-overlay");
   var convPanel = document.getElementById("conv-panel");
@@ -45,6 +46,8 @@
   var chatHistory = []; // {role, content}
   var currentConversationId = null;
   var currentConfig = {}; // cached session config
+  var activeXhr = null; // track active XHR for cancel
+  var cancelRequested = false; // true when user intentionally cancels
 
   // ── Compatibility helpers ─────────────────────────────────────────────
 
@@ -328,10 +331,6 @@
     errorEl.style.display = "none";
   }
 
-  function scrollToBottom() {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
   function appendMsg(role, text) {
     var div = document.createElement("div");
     div.className = role === "user" ? "msg msg-user" : "msg msg-assistant";
@@ -339,7 +338,6 @@
     var content = role === "user" ? escapeHTML(text) : markdownToHTML(text);
     div.innerHTML = (currentConfig.display_names !== false ? label : "") + content;
     messagesEl.appendChild(div);
-    scrollToBottom();
   }
 
   function renderAllMessages() {
@@ -355,12 +353,16 @@
       div.innerHTML = (currentConfig.display_names !== false ? label : "") + content;
       messagesEl.appendChild(div);
     }
-    scrollToBottom();
   }
 
   function setLoading(on) {
-    sendBtn.disabled = on;
-    sendBtn.textContent = on ? "Wait..." : "Send";
+    if (on) {
+      cancelRequested = false;
+      sendBtn.textContent = "Cancel";
+    } else {
+      sendBtn.textContent = "Send";
+      activeXhr = null;
+    }
   }
 
   // ── Confirm Modal ──────────────────────────────────────────────────────
@@ -539,7 +541,7 @@
       },
       function () {
         cfgUrl.value = "";
-        cfgDisplayNames.checked = true;
+cfgDisplayNames.checked = true;
         overlay.style.display = "block";
       }
     );
@@ -662,6 +664,135 @@
 
   // ── Chat ─────────────────────────────────────────────────────────────
 
+  function doSendChat() {
+    var assistantDiv = document.createElement("div");
+    assistantDiv.className = "msg msg-assistant";
+    var label = (currentConfig.display_names !== false ? "AI: " : "");
+    assistantDiv.innerHTML = label + '<span class="msg-status">Sending...</span>';
+    messagesEl.appendChild(assistantDiv);
+
+    var body = { messages: chatHistory };
+    if (currentConversationId) body.conversation_id = currentConversationId;
+
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", apiUrl("/api/chat"), true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+
+    var lastLineEnd = 0;
+    var done = false;
+
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState === 4 && !done) {
+        done = true;
+        // Process any remaining NDJSON lines
+        var allText = xhr.responseText;
+        if (allText) {
+          var remaining = allText.substring(lastLineEnd).trim();
+          if (remaining) {
+            try {
+              var chunk = JSON.parse(remaining);
+              if (chunk.type === "done") {
+                var fullText = chunk.content || "";
+                assistantDiv.innerHTML = label + markdownToHTML(fullText);
+                chatHistory.push({ role: "assistant", content: fullText });
+                if (chunk.conversation_id) currentConversationId = chunk.conversation_id;
+              } else if (chunk.type === "cancelled") {
+                var partialText = chunk.content || "";
+                if (partialText) {
+                  assistantDiv.innerHTML = label + markdownToHTML(partialText);
+                  chatHistory.push({ role: "assistant", content: partialText });
+                } else {
+                  assistantDiv.parentNode.removeChild(assistantDiv);
+                }
+              } else if (chunk.type === "error") {
+                assistantDiv.parentNode.removeChild(assistantDiv);
+                showError(chunk.message || "Request failed");
+              }
+            } catch(e) {
+              // Incomplete JSON — treat as error
+              if (!cancelRequested) {
+                assistantDiv.parentNode.removeChild(assistantDiv);
+                try {
+                  var errData = JSON.parse(xhr.responseText);
+                  showError((errData && errData.detail) ? errData.detail : "Request failed (" + xhr.status + ")");
+                } catch(e2) {
+                  showError("Request failed (" + xhr.status + ")");
+                }
+              } else {
+                assistantDiv.parentNode.removeChild(assistantDiv);
+              }
+            }
+          }
+        }
+        setLoading(false);
+      }
+    };
+
+    xhr.onprogress = function() {
+      if (done) return;
+      var allText = xhr.responseText;
+      var lastNewline = allText.lastIndexOf("\n", allText.length - 1);
+      if (lastNewline < lastLineEnd) return;
+
+      var newText = allText.substring(lastLineEnd, lastNewline + 1);
+      lastLineEnd = lastNewline + 1;
+
+      var lines = newText.split("\n");
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        try {
+          var chunk = JSON.parse(line);
+          if (chunk.type === "status") {
+            var statusSpan = assistantDiv.querySelector(".msg-status");
+            if (statusSpan) statusSpan.textContent = chunk.message;
+          } else if (chunk.type === "done") {
+            done = true;
+            var content = chunk.content || "";
+            assistantDiv.innerHTML = label + markdownToHTML(content);
+            chatHistory.push({ role: "assistant", content: content });
+            if (chunk.conversation_id) currentConversationId = chunk.conversation_id;
+            setLoading(false);
+          } else if (chunk.type === "cancelled") {
+            done = true;
+            var partial = chunk.content || "";
+            if (partial) {
+              assistantDiv.innerHTML = label + markdownToHTML(partial);
+              chatHistory.push({ role: "assistant", content: partial });
+            } else {
+              assistantDiv.parentNode.removeChild(assistantDiv);
+            }
+            setLoading(false);
+          } else if (chunk.type === "error") {
+            done = true;
+            assistantDiv.parentNode.removeChild(assistantDiv);
+            showError(chunk.message || "Request failed");
+            setLoading(false);
+          }
+        } catch (e) {
+          // Incomplete JSON line — will be completed on next onprogress
+        }
+      }
+    };
+
+    xhr.onerror = function() {
+      if (!done) {
+        done = true;
+        if (cancelRequested) {
+          // User intentionally cancelled — remove the status div
+          assistantDiv.parentNode.removeChild(assistantDiv);
+        } else {
+          assistantDiv.parentNode.removeChild(assistantDiv);
+          showError("Network error");
+        }
+        setLoading(false);
+      }
+    };
+
+    activeXhr = xhr;
+    xhr.send(JSON.stringify(body));
+  }
+
   function sendChat() {
     var text = msgInput.value.trim();
     if (!text) return;
@@ -689,34 +820,19 @@
     }
   }
 
-  function doSendChat() {
-    var body = { messages: chatHistory };
-    if (currentConversationId) {
-      body.conversation_id = currentConversationId;
+  sendBtn.onclick = function() {
+    if (activeXhr) {
+      cancelRequested = true;
+      activeXhr.abort();
+      ajax("POST", apiUrl("/api/chat/cancel"), null,
+        function() {},
+        function() {}
+      );
+      setLoading(false);
+    } else {
+      sendChat();
     }
-    ajax("POST", apiUrl("/api/chat"), body,
-      function(data) {
-        var reply = data.reply || "(empty response)";
-        appendMsg("assistant", reply);
-        chatHistory.push({ role: "assistant", content: reply });
-        if (data.conversation_id) {
-          currentConversationId = data.conversation_id;
-        }
-        setLoading(false);
-        msgInput.focus();
-      },
-      function(msg) {
-        showError(msg);
-        if (currentConversationId && msg.indexOf("404") !== -1) {
-          currentConversationId = null;
-        }
-        setLoading(false);
-        msgInput.focus();
-      }
-    );
-  }
-
-  sendBtn.onclick = sendChat;
+  };
 
   // Send on Enter (but shift+enter for newline).
   // Use keyCode as fallback for WebKit 533 which lacks e.key.
@@ -725,7 +841,17 @@
     var code = e.keyCode || e.which || 0;
     if ((key === "Enter" || code === 13) && !e.shiftKey) {
       e.preventDefault();
-      sendChat();
+      if (activeXhr) {
+        cancelRequested = true;
+        activeXhr.abort();
+        ajax("POST", apiUrl("/api/chat/cancel"), null,
+          function() {},
+          function() {}
+        );
+        setLoading(false);
+      } else {
+        sendChat();
+      }
     }
   };
 
@@ -771,5 +897,5 @@
     null
   );
 
-  msgInput.focus();
+
 })();
