@@ -23,7 +23,8 @@ E-Reader Browser ──HTTP──▸ Gateway (FastAPI) ──HTTP──▸ OpenA
                               ├─ Serves static/ (index.html, app.js)
                               ├─ /api/session/config  — per-session base_url, model, api_key
                               ├─ /api/session/models   — proxy: GET {base_url}/models
-                              └─ /api/chat             — proxy: POST {base_url}/chat/completions
+                              ├─ /api/chat             — proxy: POST {base_url}/chat/completions (NDJSON status stream to client)
+                              └─ /api/chat/cancel      — abort in-progress request for current session
 ```
 
 ## Features
@@ -34,6 +35,8 @@ E-Reader Browser ──HTTP──▸ Gateway (FastAPI) ──HTTP──▸ OpenA
 - **Model selection dropdown** — Fetches available models from your LLM endpoint with search/filter
 - **Session-based configuration** — Base URL, model, and API key stored server-side per session (cookie `sid`)
 - **Optional session persistence** — Save session config to `sessions.json` so it survives restarts
+- **Status indicator** — Shows progress (Sending → Thinking → Generating) while waiting for the LLM, so you know the request is alive
+- **Cancel button** — Abort in-progress requests; the send button becomes "Cancel" during generation
 - **No build step** — Plain Python + vanilla JS, compatible with older browser engines
 
 ## Quick Start

@@ -145,6 +145,37 @@ If users want to identify themselves (e.g. shared family device):
 
 ---
 
+## Status Indicator & Cancel
+
+**Status:** done
+
+While the LLM generates a response, the UI shows status messages (Sending → Thinking → Generating) so the user knows the request is alive. The send button becomes "Cancel" during generation, allowing the user to abort an in-progress request. The full response is rendered in one shot when complete — no progressive text updates that cause screen flashing on e-ink.
+
+### Backend
+
+- `/api/chat` now uses `stream: True` when calling the upstream LLM, enabling cancellation and status tracking
+- Returns a `StreamingResponse` with newline-delimited JSON (`application/x-ndjson`)
+- Status events emitted during generation: `{"type":"status","message":"Sending..."}`, `{"type":"status","message":"Thinking..."}`, `{"type":"status","message":"Generating..."}`
+- Final event: `{"type":"done","content":"full text","model":"...","conversation_id":"..."}`
+- Error event: `{"type":"error","message":"..."}`
+- Cancelled event: `{"type":"cancelled","content":"partial text"}`
+- Assistant message is persisted to the conversation file only after the stream completes successfully
+- `POST /api/chat/cancel` endpoint aborts the current in-progress request for the session
+  - Tracks active requests per session using an in-memory dict of `asyncio.Event`
+
+### Frontend
+
+- Uses `XMLHttpRequest` with `onprogress` (not `EventSource` — poor support on old WebKit) to read the NDJSON stream
+- Parses newline-delimited JSON chunks from `xhr.responseText`
+- Shows status text in the assistant message placeholder (`<span class="msg-status">`)
+- **Cancel button**: the send button text changes to "Cancel" during generation
+  - Calls `POST /api/chat/cancel`
+  - Aborts the XHR request
+  - Leaves the partial response (if any) visible in the chat, removes the message div if no partial content
+- No progressive text rendering — the full response replaces the status indicator once complete
+
+---
+
 ## Streaming Responses
 
 **Status**: planned
@@ -157,60 +188,47 @@ Per-token streaming (like ChatGPT on LCD) would cause hundreds of screen refresh
 
 Sentence-batching buffers tokens server-side until a sentence boundary (`.`, `?`, `!` + whitespace or newline), then sends the complete sentence as one chunk. This limits screen refreshes to ~5-15 per response — the same as turning a few pages — instead of hundreds.
 
-### Transport vs. rendering split
-
-The server **always** streams from the upstream LLM (`stream: True`) regardless of the user's setting. This enables the cancel button even when streaming display is off.
-
-| Layer | Behaviour | Controlled by |
-|---|---|---|
-| **Transport** (server ↔ LLM) | Always streaming | Server-side, always on |
-| **Rendering** (server → e-reader) | Sentence-batched chunks or single response | Per-session `streaming` option |
-
 ### Session option
 
 - New `streaming` field in session config (default: `1`)
 - When ON: server sends sentence-batched chunks; client renders incrementally
-- When OFF: server buffers the full response internally, returns single JSON — identical to current behaviour
+- When OFF: server buffers the full response internally, returns a single NDJSON `done` event — identical to current behaviour
 - Toggle in the settings panel so Kobo users (full-screen flash on every DOM change) can turn it off
-- Both modes support the cancel button
+- Both modes support the cancel button (already implemented)
+
+### Transport vs. rendering split
+
+The server already streams from the upstream LLM (`stream: True`) and sends NDJSON to the client. This initiative adds sentence-batched chunk events between the existing status events and the final `done` event.
+
+| Layer | Behaviour | Controlled by |
+|---|---|---|
+| **Transport** (server ↔ LLM) | Always streaming | Server-side, always on (✅ implemented) |
+| **Rendering** (server → e-reader) | Sentence-batched chunks or single response | Per-session `streaming` option (❌ not yet implemented) |
 
 ### Backend
 
-- Modify `/api/chat` to always use `stream: True` when calling the upstream LLM
 - When session `streaming` is ON:
-  - Return `StreamingResponse` with newline-delimited JSON (`application/x-ndjson`)
-  - Buffer tokens until a sentence boundary, then emit a chunk line: `{"type":"chunk","content":"..."}`
-  - Final line: `{"type":"done","content":"full text","model":"...","conversation_id":"..."}`
-  - Error line: `{"type":"error","message":"..."}`
+  - Buffer tokens until a sentence boundary, then emit a chunk event: `{"type":"chunk","content":"..."}`
+  - Final line remains: `{"type":"done","content":"full text","model":"...","conversation_id":"..."}`
+  - Error line remains: `{"type":"error","message":"..."}`
 - When session `streaming` is OFF:
-  - Buffer the full streamed response internally, then return a single `JSONResponse` — same shape as today
-  - Cancel still works: the server can abort the in-progress httpx request
-- Persist the full assistant message to the conversation file only after the stream completes
-- Add `POST /api/chat/cancel` endpoint to abort the current in-progress request for the session
-  - Tracks active requests per session using an in-memory dict of `asyncio.Event`
-  - Works regardless of streaming mode
+  - Current behaviour — buffer full response, emit only status events and a final `done` event
+  - Cancel still works via the existing `asyncio.Event` mechanism
 
 ### Frontend
 
 - Add a **streaming toggle** (checkbox) to the settings panel
 - When streaming ON:
-  - Use XHR `onprogress` (not `EventSource` — poor support on old WebKit) to read the streaming response
-  - Parse newline-delimited JSON chunks from `xhr.responseText`
-  - Append each sentence chunk to the same assistant message element (update innerHTML, not create new elements)
+  - On each `{"type":"chunk"}` event, append the sentence to the assistant message element (update innerHTML, not create new elements)
   - Re-render through `markdownToHTML()` on the full accumulated text per chunk (not delta) — ensures consistent formatting
-  - `scrollToBottom()` after each chunk
 - When streaming OFF:
-  - Use existing `ajax()` flow — no changes to the non-streaming path
-- **Cancel button**: replaces the "Wait..." text on the send button during generation
-  - Calls `POST /api/chat/cancel`
-  - Aborts the XHR request
-  - Leaves the partial response (if any) visible in the chat
-- Graceful fallback: if streaming XHR fails or the browser doesn't support `onprogress`, fall back to non-streaming
+  - Current behaviour — status indicator followed by the final rendered response
+- Both modes already support the cancel button (implemented)
 
 ### Constraints
 
 - No `EventSource` — use XHR `onprogress` for WebKit 533 compatibility
-- No CSS changes for the cancel button — reuse the existing send button ("Wait..." → "Cancel" text swap)
+- No CSS changes — reuse the existing send button and status indicator
 - Sentence boundary detection: `.`, `?`, `!`, `。`, `？`, `！` followed by whitespace or newline. Must not split on decimal points (`3.14`) or abbreviations (`e.g.`) — use a simple lookahead rule
 - E-reader browsers may have poor streaming support — test on target devices before considering this stable
 
