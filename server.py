@@ -1,6 +1,7 @@
 """E-Reader LLM Gateway — minimal FastAPI server that proxies to OpenAI-compatible
 endpoints. Serves a static chat UI optimised for e-reader browsers."""
 
+import asyncio
 import json
 import os
 import tempfile
@@ -11,7 +12,7 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
@@ -29,6 +30,7 @@ app = FastAPI()
 # ── Session store ────────────────────────────────────────────────────────
 sessions: dict[str, dict] = {}
 device_sessions: dict[str, str] = {}  # device name → session id
+_active_requests: dict[str, asyncio.Event] = {}
 
 if PERSIST_SESSIONS and SESSIONS_FILE.exists():
     try:
@@ -110,6 +112,63 @@ def _new_session() -> dict:
     if DEFAULT_API_KEY:
         sess["api_key"] = DEFAULT_API_KEY
     return sess
+
+
+
+
+
+def _extract_stream_content(data: dict) -> str:
+    choices = data.get("choices") or []
+    if not choices:
+        return ""
+    choice = choices[0] or {}
+    delta = choice.get("delta") or {}
+    if isinstance(delta, dict) and delta.get("content"):
+        return delta.get("content", "")
+    message = choice.get("message") or {}
+    if isinstance(message, dict):
+        return message.get("content", "") or ""
+    return ""
+
+
+
+
+
+def _upstream_error_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except Exception:
+        return response.text[:500]
+
+    if isinstance(payload, dict):
+        detail = payload.get("error")
+        if isinstance(detail, dict):
+            message = detail.get("message")
+            if message:
+                return str(message)
+        if payload:
+            return json.dumps(payload, ensure_ascii=False)
+    return response.text[:500]
+
+
+def _format_ndjson_event(event: dict) -> bytes:
+    return (json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+
+
+
+def _append_assistant_message(session_id: str, conversation_id: str | None, conversation: dict | None, content: str) -> None:
+    if conversation is None or conversation_id is None:
+        return
+    now = datetime.now().isoformat(timespec="seconds")
+    conversation["messages"].append({
+        "role": "assistant",
+        "content": content,
+        "created_at": now,
+    })
+    conversation["updated_at"] = now
+    _write_conversation(session_id, conversation_id, conversation)
 
 
 def _get_session(request: Request) -> tuple[str, dict]:
@@ -367,7 +426,7 @@ async def chat(request: Request):
     payload = {
         "model": model or body.get("model", ""),
         "messages": messages,
-        "stream": False,
+        "stream": True,
     }
     if not payload["model"]:
         raise HTTPException(400, "model is required (set in session config or request)")
@@ -399,43 +458,83 @@ async def chat(request: Request):
         conversation["updated_at"] = now
         _write_conversation(sid, conversation_id, conversation)
 
+    cancel_event = asyncio.Event()
+    _active_requests[sid] = cancel_event
+
     headers = {"Content-Type": "application/json"}
     if sess.get("api_key"):
         headers["Authorization"] = f"Bearer {sess['api_key']}"
 
     url = f"{base_url}/chat/completions"
-    async with httpx.AsyncClient(timeout=120) as client:
-        r = await client.post(url, json=payload, headers=headers)
 
-    if r.status_code != 200:
+    async def ndjson_body():
+        full_text = ""
+        sent_generating = False
         try:
-            detail = r.json()
-        except Exception:
-            detail = r.text[:500]
-        raise HTTPException(r.status_code, detail)
+            yield _format_ndjson_event({"type": "status", "message": "Sending..."})
+            async with httpx.AsyncClient(timeout=120) as client:
+                async with client.stream("POST", url, json=payload, headers=headers) as upstream:
+                    if upstream.status_code != 200:
+                        yield _format_ndjson_event({"type": "error", "message": _upstream_error_detail(upstream)})
+                        return
 
-    data = r.json()
-    content = ""
-    choices = data.get("choices") or []
-    if choices:
-        content = choices[0].get("message", {}).get("content", "")
+                    yield _format_ndjson_event({"type": "status", "message": "Thinking..."})
 
-    # Persist assistant message after receiving LLM response
-    if conversation is not None:
-        now = datetime.now().isoformat(timespec="seconds")
-        conversation["messages"].append({
-            "role": "assistant",
-            "content": content,
-            "created_at": now,
-        })
-        conversation["updated_at"] = now
-        _write_conversation(sid, conversation_id, conversation)
+                    async for line in upstream.aiter_lines():
+                        if cancel_event.is_set():
+                            yield _format_ndjson_event({"type": "cancelled", "content": full_text})
+                            return
 
-    result = {"reply": content, "model": payload["model"]}
-    if conversation_id and DATA_DIR:
-        result["conversation_id"] = conversation_id
+                        if not line or not line.startswith("data:"):
+                            continue
 
-    response = JSONResponse(result)
+                        data_text = line[5:].strip()
+                        if not data_text:
+                            continue
+                        if data_text == "[DONE]":
+                            break
+
+                        try:
+                            data = json.loads(data_text)
+                        except json.JSONDecodeError:
+                            continue
+
+                        content = _extract_stream_content(data)
+                        if content:
+                            full_text += content
+                            if not sent_generating:
+                                yield _format_ndjson_event({"type": "status", "message": "Generating..."})
+                                sent_generating = True
+
+                    if cancel_event.is_set():
+                        yield _format_ndjson_event({"type": "cancelled", "content": full_text})
+                        return
+
+            _append_assistant_message(sid, conversation_id, conversation, full_text)
+            yield _format_ndjson_event({
+                "type": "done",
+                "content": full_text,
+                "model": payload["model"],
+                "conversation_id": conversation_id,
+            })
+        except (httpx.HTTPError, UnicodeError, ValueError) as exc:
+            yield _format_ndjson_event({"type": "error", "message": str(exc) or "Upstream request failed"})
+        finally:
+            if _active_requests.get(sid) is cancel_event:
+                _active_requests.pop(sid, None)
+
+    response = StreamingResponse(ndjson_body(), media_type="application/x-ndjson")
+    response.set_cookie("sid", sid, httponly=True, max_age=86400 * 30)
+    return response
+
+
+@app.post("/api/chat/cancel")
+async def cancel_chat(request: Request):
+    sid, _ = _get_session(request)
+    event = _active_requests.get(sid)
+    if event is not None:
+        event.set()
+    response = JSONResponse({"ok": True})
     response.set_cookie("sid", sid, httponly=True, max_age=86400 * 30)
     return response
 

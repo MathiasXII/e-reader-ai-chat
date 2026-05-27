@@ -23,7 +23,8 @@ E-Reader Browser ──HTTP──▸ Gateway (FastAPI) ──HTTP──▸ OpenA
                               ├─ Serves static/ (index.html, app.js)
                               ├─ /api/session/config  — per-session base_url, model, api_key
                               ├─ /api/session/models   — proxy: GET {base_url}/models
-                              └─ /api/chat             — proxy: POST {base_url}/chat/completions
+                              ├─ /api/chat             — proxy: POST {base_url}/chat/completions (NDJSON status stream to client)
+                              └─ /api/chat/cancel      — abort in-progress request for current session
 ```
 
 ## Features
@@ -34,6 +35,8 @@ E-Reader Browser ──HTTP──▸ Gateway (FastAPI) ──HTTP──▸ OpenA
 - **Model selection dropdown** — Fetches available models from your LLM endpoint with search/filter
 - **Session-based configuration** — Base URL, model, and API key stored server-side per session (cookie `sid`)
 - **Optional session persistence** — Save session config to `sessions.json` so it survives restarts
+- **Status indicator** — Shows progress (Sending → Thinking → Generating) while waiting for the LLM, so you know the request is alive
+- **Cancel button** — Abort in-progress requests; the send button becomes "Cancel" during generation
 - **No build step** — Plain Python + vanilla JS, compatible with older browser engines
 
 ## Quick Start
@@ -153,11 +156,11 @@ You can use any value for `device` — each value maps to its own session on the
 
 - **`server.py`** — Single-file FastAPI backend. Session state is in-memory (dict keyed by cookie `sid`). All LLM traffic is proxied server-side so the e-reader never hits CORS or mixed-content issues.
 - **`static/index.html`** — E-reader-friendly chat UI. No frameworks. Minimal CSS optimized for e-ink displays.
-- **`static/app.js`** — Plain ES5-ish JS. No build step. Uses `fetch()` for same-origin API calls. Sends full chat history on each request. Includes a custom Markdown-to-HTML renderer with LaTeX math support.
+- **`static/app.js`** — Plain ES5-ish JS. No build step. Uses `XMLHttpRequest` for same-origin API calls (WebKit 533 compat). Sends full chat history on each request. Includes a custom Markdown-to-HTML renderer with LaTeX math support.
 
 ## Limitations
 
-- **Non-streaming** — Both the gateway and frontend use `stream: false`. The entire response is returned at once.
+- **Status indicator** — While the LLM generates a response, the UI shows status messages (Sending… → Thinking… → Generating…) so the user knows the request is in progress. The full response is rendered in one shot when complete — no progressive text updates that cause screen flashing on e-ink.
 - **No localStorage** — Session config lives server-side in cookies. The frontend does not use localStorage or sessionStorage.
 - **In-memory sessions by default** — Session state is lost on server restart unless `PERSIST_SESSIONS=1` is set. Conversations are ephemeral unless `DATA_DIR` is configured.
 - **Cookie volatility on e-readers** — E-readers may clear cookies between sessions. Use `?device=<name>` in the URL (saved as a bookmark) to maintain a stable identity across cookie clears.
